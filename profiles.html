@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Netflix - Who's Watching?</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+  <style>
+    body {
+      background-color: #141414;
+      color: #fff;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .netflix-logo { height: 45px; margin-bottom: 20px; }
+
+    .profiles-container { text-align: center; max-width: 80%; margin: 0 auto; }
+    .profiles-title { font-size: 3.5vw; color: #fff; font-weight: 400; margin-bottom: 30px; }
+
+    .profiles-list {
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: center;
+      gap: 2vw;
+      margin-bottom: 40px;
+    }
+    .profile {
+      cursor: pointer;
+      transition: all 0.3s ease;
+      width: 10vw;
+      min-width: 84px;
+      max-width: 200px;
+    }
+    .profile:hover { transform: scale(1.1); }
+
+    .profile-avatar {
+      width: 100%;
+      height: auto;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+
+    .profile-name-input {
+      width: 100%;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #808080;
+      font-size: max(12px, 1.3vw);
+      text-align: center;
+      outline: none;
+      transition: color 0.3s ease, border-color 0.2s ease, background-color 0.2s ease;
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .profile:hover .profile-name-input { color: #fff; }
+    .profile-name-input:focus {
+      color: #fff;
+      border-color: #999;
+      background-color: rgba(255,255,255,0.06);
+    }
+    .profile-name-input::placeholder { color: #6e6e6e; }
+
+    .btn-manage-profiles {
+      background-color: transparent;
+      color: #808080;
+      border: 1px solid #808080;
+      padding: 8px 24px;
+      font-size: max(12px, 1.2vw);
+      letter-spacing: 2px;
+      margin-top: 20px;
+      transition: all 0.3s ease;
+    }
+    .btn-manage-profiles:hover { color: #fff; border-color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-12 text-center mb-5">
+        <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="netflix-logo">
+      </div>
+    </div>
+
+    <div class="profiles-container">
+      <h1 class="profiles-title">Who's watching?</h1>
+
+      <form action="#" method="get" class="profiles-list" novalidate>
+        <!-- Profile 1 -->
+        <div class="profile">
+          <img src="https://i.pinimg.com/564x/b2/a0/29/b2a029a6c2757e9d3a09265e3d07d49d.jpg" alt="Profile 1" class="profile-avatar">
+          <label class="visually-hidden" for="name-liel">Profile name</label>
+          <input id="name-liel" class="profile-name-input" type="text" value="Liel" maxlength="20" />
+        </div>
+
+        <!-- Profile 2 -->
+        <div class="profile">
+          <img src="https://i.pinimg.com/564x/a4/c6/5f/a4c65f709d4c0cb1b4329c12beb9cd78.jpg" alt="Profile 2" class="profile-avatar">
+          <label class="visually-hidden" for="name-lihi">Profile name</label>
+          <input id="name-lihi" class="profile-name-input" type="text" value="Lihi" maxlength="20" />
+        </div>
+
+        <!-- Profile 3 -->
+        <div class="profile">
+          <img src="https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg" alt="Profile 3" class="profile-avatar">
+          <label class="visually-hidden" for="name-amit">Profile name</label>
+          <input id="name-amit" class="profile-name-input" type="text" value="Amit" maxlength="20" />
+        </div>
+      </form>
+
+      <div class="text-center">
+        <button class="btn btn-manage-profiles" type="button" disabled>MANAGE PROFILES</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
