@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netflix</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-image: url('https://assets.nflxext.com/ffe/siteui/vlv3/a1dc92ca-091d-4ca9-a05b-8cd44bbfce6a/f9368347-e982-4856-a5a4-396796381f28/RS-en-20191230-popsignuptwoweeks-perspective_alpha_website_large.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-color: #141414;
+            color: #fff;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            min-height: 100vh;
+        }
+        .logo {
+            height: 30px;
+        }
+        .header {
+            background-image: linear-gradient(to right, rgba(0,0,0,0.9), rgba(0,0,0,0.7), rgba(0,0,0,0.9));
+            background-size: cover;
+            padding: 0.5rem 4%;
+        }
+        .nav-item a {
+            color: #e5e5e5;
+            margin-right: 20px;
+            font-size: 14px;
+            text-decoration: none;
+        }
+        .nav-item a:hover, .nav-item a.active {
+            color: #fff;
+        }
+        .profile {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+        }
+        .icons a {
+            color: #e5e5e5;
+            margin-left: 15px;
+            font-size: 16px;
+            text-decoration: none;
+        }
+        .icons a:hover {
+            color: #fff;
+        }    
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <header class="header">
+        <div class="container-fluid">
+            <div class="d-flex align-items-center">
+                <!-- Logo -->
+                <a class="brand me-4" href="#">
+                    <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo">
+                </a>
+                
+                <!-- Navigation Menu -->
+                <div class="nav-menu d-lg-flex me-auto">
+                    <ul class="nav-list navbar-nav me-auto d-flex flex-row">
+                        <li class="nav-item">
+                            <a href="#">Home</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#">TV Shows</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#">Movies</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#">Games</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#">New & Popular</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#">My List</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#">Browse by Languages</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <!-- Utility Icons -->
+                <div class="icons d-flex align-items-center">
+                    <a href="#"><i class="bi bi-search"></i></a>
+                    <a href="#"><i class="bi bi-bell"></i></a>
+                    <a href="profiles.html" class="d-flex align-items-center">
+                        <img src="https://occ-0-2773-2774.1.nflxso.net/dnm/api/v6/K6hjPJd6cR6FpVELC5Pd6ovHRSk/AAAABTYctxxbe-UkKEdlMxXm4FVGD6DqTHkQ0TQ5CQJ9jbOMnG0CYxYcSICcTUQz8DrB7CpKUGpqJVMtEqksLlvSJx2ac3Ak.png" alt="Profile" class="profile">
+                        <i class="bi bi-caret-down-fill ms-1" style="font-size: 10px;"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+</body>
+</html>
