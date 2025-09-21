@@ -56,6 +56,10 @@
     </style>
 </head>
 <body>
+    <div class="container text-center mt-5">
+         <h1 id="welcome-text"></h1>
+         <button id="logout-btn" class="btn btn-danger mt-3">Logout</button>
+    </div>
     <!-- Navigation Bar -->
     <header class="header">
         <div class="container-fluid">
@@ -104,5 +108,29 @@
             </div>
         </div>
     </header>
+    <script>
+  // Same profiles array (needed to look up name by id)
+    const profiles = [
+    { id: 1, name: "Liel" },
+    { id: 2, name: "Lihi" },
+    { id: 3, name: "Amit" }
+  ];
+
+  const profileId = localStorage.getItem("selectedProfileId");
+  const profile = profiles.find(p => p.id == profileId);
+
+  if (profile) {
+    document.getElementById("welcome-text").textContent = "Hello, " + profile.name;
+  } else {
+    // If no profile found, redirect to login
+    window.location.href = "login.html";
+  }
+
+  // Logout button
+  document.getElementById("logout-btn").addEventListener("click", () => {
+    localStorage.clear();
+    window.location.href = "login.html";
+  });
+</script>
 </body>
 </html>
