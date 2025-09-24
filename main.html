@@ -2,13 +2,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Netflix</title>
   <!-- Bootstrap CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <!-- Bootstrap Icons -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"/>
   <style>
     body {
       background-image: url('https://assets.nflxext.com/ffe/siteui/vlv3/a1dc92ca-091d-4ca9-a05b-8cd44bbfce6a/f9368347-e982-4856-a5a4-396796381f28/RS-en-20191230-popsignuptwoweeks-perspective_alpha_website_large.jpg');
@@ -21,70 +21,86 @@
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
       min-height: 100vh;
     }
-    .logo {
-      height: 30px;
-    }
+    .logo { height: 30px; }
     .header {
       background-image: linear-gradient(to right, rgba(0,0,0,0.9), rgba(0,0,0,0.7), rgba(0,0,0,0.9));
-      background-size: cover;
       padding: 0.5rem 4%;
+      position: sticky; top: 0; z-index: 1000;
     }
-    .nav-item a {
-      color: #e5e5e5;
-      margin-right: 20px;
-      font-size: 14px;
-      text-decoration: none;
+    .nav-item a { color: #e5e5e5; margin-right: 20px; font-size: 14px; text-decoration: none; }
+    .nav-item a:hover, .nav-item a.active { color: #fff; }
+    .profile { width: 32px; height: 32px; border-radius: 4px; }
+    .icons a { color: #e5e5e5; margin-left: 15px; font-size: 16px; text-decoration: none; }
+    .icons a:hover { color: #fff; }
+    #welcome-text { font-size: 14px; margin-right: 8px; color: #fff; }
+    .dropdown-menu { background-color: #141414; border: 1px solid #333; }
+    .dropdown-menu a { color: #fff; }
+    .dropdown-menu a:hover { background-color: #333; color: #fff; }
+
+    .controls-bar {
+      background: linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.4));
+      padding: 12px 4%;
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
     }
-    .nav-item a:hover, .nav-item a.active {
-      color: #fff;
+    .search-wrap { position: relative; }
+    #searchInput {
+      display: none;
+      background-color: #222; border: 1px solid #444; color: #fff;
+      padding: 6px 10px; border-radius: 6px; min-width: 220px;
     }
-    .profile {
-      width: 32px;
-      height: 32px;
-      border-radius: 4px;
+    #searchInput.show { display: inline-block; }
+
+    .row-title { font-size: 1.4rem; margin: 16px 4% 8px; font-weight: 600; }
+    .scroll-row {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(220px, 1fr);
+      gap: 12px;
+      overflow-x: auto;
+      padding: 0 4% 10px;
+      scroll-snap-type: x mandatory;
     }
-    .icons a {
-      color: #e5e5e5;
-      margin-left: 15px;
-      font-size: 16px;
-      text-decoration: none;
+    .scroll-row::-webkit-scrollbar { height: 8px; }
+    .scroll-row::-webkit-scrollbar-thumb { background: #333; border-radius: 8px; }
+
+    .media-card {
+      background-color: rgba(0,0,0,0.6);
+      border: 1px solid #2b2b2b;
+      border-radius: 10px;
+      overflow: hidden;
+      scroll-snap-align: start;
+      transition: transform 0.2s ease;
     }
-    .icons a:hover {
-      color: #fff;
-    }
-    #welcome-text {
-      font-size: 14px;
-      margin-right: 8px;
-      color: #fff;
-    }
-    .dropdown-menu {
-      background-color: #141414;
-      border: 1px solid #333;
-    }
-    .dropdown-menu a {
-      color: #fff;
-    }
-    .dropdown-menu a:hover {
-      background-color: #333;
-      color: #fff;
-    }
+    .media-card:hover { transform: translateY(-3px); }
+    .media-thumb { width: 100%; height: 125px; object-fit: cover; display: block; }
+    .media-body { padding: 10px; }
+    .media-title { font-size: 0.95rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .media-meta { font-size: 0.8rem; color: #b3b3b3; }
+    .badge-cat { background: #333; border: 1px solid #555; color: #ddd; font-weight: 500; }
+
+    .like-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .like-btn { background: transparent; border: none; cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.1s ease-in-out; }
+    .like-btn:active { transform: scale(0.9); }
+    .like-icon { font-size: 1.2rem; color: #bbb; transition: color 0.2s ease; }
+    .like-btn.liked .like-icon { color: #e50914; }
+    .pop { animation: pop 250ms ease-out; }
+    @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
   </style>
 </head>
 <body>
-  <!-- Navigation Bar -->
+  <!-- Header -->
   <header class="header">
     <div class="container-fluid">
       <div class="d-flex align-items-center justify-content-between">
-        
-        <!-- Left side: Logo -->
+        <!-- Left: Logo -->
         <a class="brand me-4" href="#">
-          <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo">
+          <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo"/>
         </a>
 
-        <!-- Navigation Menu -->
+        <!-- Center: Nav -->
         <div class="nav-menu d-lg-flex me-auto">
           <ul class="nav-list navbar-nav me-auto d-flex flex-row">
-            <li class="nav-item"><a href="#">Home</a></li>
+            <li class="nav-item"><a href="#" class="active">Home</a></li>
             <li class="nav-item"><a href="#">TV Shows</a></li>
             <li class="nav-item"><a href="#">Movies</a></li>
             <li class="nav-item"><a href="#">Games</a></li>
@@ -93,49 +109,58 @@
             <li class="nav-item"><a href="#">Browse by Languages</a></li>
           </ul>
         </div>
-        
-        <!-- Right side: Search, Bell, Profile Dropdown -->
+
+        <!-- Right: search, bell, profile dropdown, search input -->
         <div class="icons d-flex align-items-center">
-          <a href="#"><i class="bi bi-search"></i></a>
+          <a href="#" id="searchToggle" aria-label="Search"><i class="bi bi-search"></i></a>
           <a href="#"><i class="bi bi-bell"></i></a>
 
-          <!-- Dropdown -->
-          <div class="dropdown">
+          <div class="dropdown ms-2">
             <a href="#" class="d-flex align-items-center dropdown-toggle" id="profileDropdown" data-bs-toggle="dropdown" aria-expanded="false">
               <span id="welcome-text"></span>
-              <img id="profile-avatar" src="" alt="Profile" class="profile ms-1">
+              <img id="profile-avatar" src="" alt="Profile" class="profile ms-1"/>
             </a>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="profileDropdown">
               <li><a class="dropdown-item" href="profiles.html">Switch Profile</a></li>
               <li><a class="dropdown-item" href="#" id="logout-link">Logout</a></li>
             </ul>
           </div>
+
+          <div class="search-wrap ms-2">
+            <input id="searchInput" type="text" placeholder="Search titles or info..."/>
+          </div>
         </div>
       </div>
     </div>
   </header>
 
-  <!-- Bootstrap JS (needed for dropdowns) -->
+  <!-- Controls: sort and filter -->
+  <section class="controls-bar">
+    <div class="d-flex align-items-center gap-2">
+      <label class="me-1">Sort:</label>
+      <select id="sortSelect" class="form-select form-select-sm" style="width: 160px;">
+        <option value="az" selected>Title A to Z</option>
+        <option value="za">Title Z to A</option>
+      </select>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <label class="me-1">Category:</label>
+      <select id="filterSelect" class="form-select form-select-sm" style="width: 200px;">
+        <option value="all" selected>All categories</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- Rows -->
+  <h2 class="row-title">Movies</h2>
+  <div id="moviesRow" class="scroll-row"></div>
+
+  <h2 class="row-title">Series</h2>
+  <div id="seriesRow" class="scroll-row"></div>
+
+  <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-  <script>
-    const name = localStorage.getItem("selectedProfileName");
-    const avatar = localStorage.getItem("selectedProfileAvatar");
-
-    if (name && avatar) {
-      document.getElementById("welcome-text").textContent = "Hello, " + name;
-      document.getElementById("profile-avatar").src = avatar;
-    } else {
-      // If no profile info found, redirect to login
-      window.location.href = "login.html";
-    }
-
-    // Logout handler
-    document.getElementById("logout-link").addEventListener("click", (e) => {
-      e.preventDefault();
-      localStorage.clear();
-      window.location.href = "login.html";
-    });
-  </script>
+  <!-- App JS -->
+  <script src="main.js"></script>
 </body>
 </html>
