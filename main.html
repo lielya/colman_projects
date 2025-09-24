@@ -1,108 +1,227 @@
 <!--Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888-->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Netflix</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <style>
-        body {
-            background-image: url('https://assets.nflxext.com/ffe/siteui/vlv3/a1dc92ca-091d-4ca9-a05b-8cd44bbfce6a/f9368347-e982-4856-a5a4-396796381f28/RS-en-20191230-popsignuptwoweeks-perspective_alpha_website_large.jpg');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            background-color: #141414;
-            color: #fff;
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            min-height: 100vh;
-        }
-        .logo {
-            height: 30px;
-        }
-        .header {
-            background-image: linear-gradient(to right, rgba(0,0,0,0.9), rgba(0,0,0,0.7), rgba(0,0,0,0.9));
-            background-size: cover;
-            padding: 0.5rem 4%;
-        }
-        .nav-item a {
-            color: #e5e5e5;
-            margin-right: 20px;
-            font-size: 14px;
-            text-decoration: none;
-        }
-        .nav-item a:hover, .nav-item a.active {
-            color: #fff;
-        }
-        .profile {
-            width: 32px;
-            height: 32px;
-            border-radius: 4px;
-        }
-        .icons a {
-            color: #e5e5e5;
-            margin-left: 15px;
-            font-size: 16px;
-            text-decoration: none;
-        }
-        .icons a:hover {
-            color: #fff;
-        }    
-    </style>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Netflix - Main</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"/>
+  <style>
+    /* Darker page background */
+    body{
+      background-image:
+        linear-gradient(rgba(0,0,0,0.82), rgba(0,0,0,0.82)),
+        url('https://assets.nflxext.com/ffe/siteui/vlv3/a1dc92ca-091d-4ca9-a05b-8cd44bbfce6a/f9368347-e982-4856-a5a4-396796381f28/RS-en-20191230-popsignuptwoweeks-perspective_alpha_website_large.jpg');
+      background-size: cover; background-position: center; background-repeat: no-repeat;
+      background-attachment: fixed; background-color: #141414; color: #fff;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; min-height: 100vh;
+    }
+    .logo{ height:30px; }
+    .header{
+      background-image: linear-gradient(to right, rgba(0,0,0,0.9), rgba(0,0,0,0.7), rgba(0,0,0,0.9));
+      padding: .5rem 4%; position: sticky; top:0; z-index:1000;
+    }
+    .nav-item a{ color:#e5e5e5; margin-right:20px; font-size:14px; text-decoration:none; }
+    .nav-item a:hover, .nav-item a.active{ color:#fff; }
+    .profile{ width:32px; height:32px; border-radius:4px; }
+    .icons a{ color:#e5e5e5; margin-left:15px; font-size:16px; text-decoration:none; }
+    .icons a:hover{ color:#fff; }
+    #welcome-text{ font-size:14px; margin-right:8px; color:#fff; }
+    .dropdown-menu{ background:#141414; border:1px solid #333; }
+    .dropdown-menu a{ color:#fff; } .dropdown-menu a:hover{ background:#333; color:#fff; }
+
+    /* HERO section between header and rows */
+    .hero{
+      position:relative; height:48vh; min-height:280px; max-height:520px;
+      display:flex; align-items:flex-end; padding:3% 4%;
+      background-size:cover; background-position:center;
+      overflow:hidden;
+    }
+    .hero::after{ /* dark overlay */
+      content:""; position:absolute; inset:0;
+      background: linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0.55) 40%, rgba(0,0,0,0.35) 70%, rgba(0,0,0,0.2));
+      pointer-events:none;
+    }
+    .hero-content{ position:relative; z-index:2; max-width:min(700px, 90%); }
+    .hero-title{ font-size:clamp(22px,4vw,44px); font-weight:800; margin:0 0 8px 0; }
+    .hero-meta{ color:#b3b3b3; margin-bottom:10px; font-size:clamp(12px,1.6vw,16px); }
+    .hero-desc{ color:#e6e6e6; margin-bottom:14px; font-size:clamp(12px,1.4vw,15px); }
+    .btn-hero{ border-radius:6px; padding:8px 14px; font-weight:600; }
+    .btn-hero-info{ background:rgba(109,109,110,0.7); border:1px solid rgba(255,255,255,0.25); color:#fff; }
+    .btn-hero-info:hover{ background:rgba(109,109,110,0.85); color:#fff; }
+
+    /* Controls bar */
+    .controls-bar{
+      background: linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.4));
+      padding: 12px 4%; display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+    }
+    .search-wrap{ position:relative; }
+    #searchInput{
+      display:none; background:#222; border:1px solid #444; color:#fff;
+      padding:6px 10px; border-radius:6px; min-width:220px;
+    }
+    #searchInput.show{ display:inline-block; }
+    .form-select, .form-select:focus{ background:#222; color:#fff; border-color:#444; }
+    .form-select option{ color:#fff; }
+
+    .row-title{ font-size:1.4rem; margin:16px 4% 8px; font-weight:600; }
+
+    /* Carousel rows: 7 visible items */
+    .carousel-section{ position:relative; }
+    .carousel-viewport{
+      overflow-x:auto; overflow-y:visible; scroll-behavior:smooth; padding:0 4% 10px;
+      -ms-overflow-style:none; scrollbar-width:none;
+    }
+    .carousel-viewport::-webkit-scrollbar{ display:none; }
+    .carousel-strip{
+      display:grid; grid-auto-flow:column; gap:12px;
+      grid-auto-columns: calc((100% - (12px * 6)) / 7); /* exactly 7 per view */
+    }
+
+    /* Cards */
+    .media-card{ position:relative; background:rgba(0,0,0,0.6); border:1px solid #2b2b2b;
+      border-radius:10px; overflow:hidden; transition:transform .2s ease; }
+    .media-card:hover{ transform: translateY(-3px); }
+    .media-thumb{ width:100%; height:125px; object-fit:cover; display:block; }
+    .media-body{ padding:10px; }
+    .media-title{ font-size:.95rem; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .media-meta{ font-size:.8rem; color:#b3b3b3; }
+    .badge-cat{ background:#333; border:1px solid #555; color:#ddd; font-weight:500; }
+
+    .like-row{ display:flex; align-items:center; gap:8px; margin-top:6px; }
+    .like-btn{ background:transparent; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; justify-content:center; transition:transform .1s ease-in-out; }
+    .like-btn:active{ transform:scale(0.9); }
+    .like-icon{ font-size:1.2rem; color:#bbb; transition:color .2s ease; }
+    .like-btn.liked .like-icon{ color:#e50914; }
+    .pop{ animation:pop 250ms ease-out; }
+    @keyframes pop{ 0%{transform:scale(1);} 50%{transform:scale(1.35);} 100%{transform:scale(1);} }
+
+    /* Hover flyout above card */
+    .flyout{
+      position:absolute; left:50%; bottom:100%; transform:translate(-50%,-8px);
+      width:280px; background:#181818; border:1px solid #333; border-radius:10px;
+      box-shadow:0 8px 24px rgba(0,0,0,0.6); padding:10px; opacity:0; visibility:hidden;
+      transition:opacity .15s ease, visibility .15s ease; z-index:5;
+    }
+    .media-card:hover .flyout{ opacity:1; visibility:visible; }
+    .flyout-title{ font-size:.95rem; margin:0 0 4px 0; }
+    .flyout-meta{ font-size:.8rem; color:#b3b3b3; margin-bottom:6px; }
+    .flyout-text{ font-size:.85rem; color:#ddd; }
+
+    /* Carousel arrows */
+    .arrow-btn{
+      position:absolute; top:50%; transform:translateY(-50%); width:36px; height:36px; border-radius:50%;
+      border:1px solid #555; background:rgba(0,0,0,0.6); color:#fff; display:grid; place-items:center;
+      cursor:pointer; transition:background-color .15s ease; z-index:10;
+    }
+    .arrow-btn:hover{ background:rgba(255,255,255,0.12); }
+    .arrow-btn.prev{ left:10px; } .arrow-btn.next{ right:10px; }
+    .arrow-btn:disabled{ opacity:.35; cursor:not-allowed; }
+  </style>
 </head>
 <body>
-    <!-- Navigation Bar -->
-    <header class="header">
-        <div class="container-fluid">
-            <div class="d-flex align-items-center">
-                <!-- Logo -->
-                <a class="brand me-4" href="#">
-                    <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo">
-                </a>
-                
-                <!-- Navigation Menu -->
-                <div class="nav-menu d-lg-flex me-auto">
-                    <ul class="nav-list navbar-nav me-auto d-flex flex-row">
-                        <li class="nav-item">
-                            <a href="#">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="#">TV Shows</a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="#">Movies</a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="#">Games</a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="#">New & Popular</a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="#">My List</a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="#">Browse by Languages</a>
-                        </li>
-                    </ul>
-                </div>
-                
-                <!-- Utility Icons -->
-                <div class="icons d-flex align-items-center">
-                    <a href="#"><i class="bi bi-search"></i></a>
-                    <a href="#"><i class="bi bi-bell"></i></a>
-                    <a href="profiles.html" class="d-flex align-items-center">
-                        <img src="https://i.pinimg.com/564x/b2/a0/29/b2a029a6c2757e9d3a09265e3d07d49d.jpg" alt="Profile" class="profile">
-                        <i class="bi bi-caret-down-fill ms-1" style="font-size: 10px;"></i>
-                    </a>
-                </div>
-            </div>
+  <!-- Header -->
+  <header class="header">
+    <div class="container-fluid">
+      <div class="d-flex align-items-center justify-content-between">
+        <!-- Left: Logo -->
+        <a class="brand me-4" href="#">
+          <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo"/>
+        </a>
+
+        <!-- Center: Nav -->
+        <div class="nav-menu d-lg-flex me-auto">
+          <ul class="nav-list navbar-nav me-auto d-flex flex-row">
+            <li class="nav-item"><a href="#" class="active">Home</a></li>
+            <li class="nav-item"><a href="#">TV Shows</a></li>
+            <li class="nav-item"><a href="#">Movies</a></li>
+            <li class="nav-item"><a href="#">Games</a></li>
+            <li class="nav-item"><a href="#">New & Popular</a></li>
+            <li class="nav-item"><a href="#">My List</a></li>
+            <li class="nav-item"><a href="#">Browse by Languages</a></li>
+          </ul>
         </div>
-    </header>
+
+        <!-- Right: search, bell, profile dropdown, search input -->
+        <div class="icons d-flex align-items-center">
+          <a href="#" id="searchToggle" aria-label="Search"><i class="bi bi-search"></i></a>
+          <a href="#"><i class="bi bi-bell"></i></a>
+
+          <div class="dropdown ms-2">
+            <a href="#" class="d-flex align-items-center dropdown-toggle" id="profileDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+              <span id="welcome-text"></span>
+              <img id="profile-avatar" src="" alt="Profile" class="profile ms-1"/>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="profileDropdown">
+              <li><a class="dropdown-item" href="profiles.html">Switch Profile</a></li>
+              <li><a class="dropdown-item" href="#" id="logout-link">Logout</a></li>
+            </ul>
+          </div>
+
+          <div class="search-wrap ms-2">
+            <input id="searchInput" type="text" placeholder="Search titles or info..."/>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO: random pick each login -->
+  <section id="hero" class="hero">
+    <div class="hero-content">
+      <h1 id="heroTitle" class="hero-title"></h1>
+      <div id="heroMeta" class="hero-meta"></div>
+      <p id="heroDesc" class="hero-desc"></p>
+      <div class="d-flex gap-2">
+        <button id="heroPlay" class="btn btn-light btn-hero"><i class="bi bi-play-fill me-1"></i>Play</button>
+        <button id="heroInfo" class="btn btn-hero btn-hero-info"><i class="bi bi-info-circle me-1"></i>Info</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Controls: sort and filter -->
+  <section class="controls-bar">
+    <div class="d-flex align-items-center gap-2">
+      <label class="me-1">Sort:</label>
+      <select id="sortSelect" class="form-select form-select-sm" style="width:160px;">
+        <option value="az" selected>Title A to Z</option>
+        <option value="za">Title Z to A</option>
+      </select>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <label class="me-1">Category:</label>
+      <select id="filterSelect" class="form-select form-select-sm" style="width:200px;">
+        <option value="all" selected>All categories</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- Movies Row -->
+  <h2 class="row-title">Movies</h2>
+  <section class="carousel-section">
+    <button class="arrow-btn prev" data-target="moviesViewport" aria-label="Previous movies"><i class="bi bi-chevron-left"></i></button>
+    <div id="moviesViewport" class="carousel-viewport">
+      <div id="moviesStrip" class="carousel-strip"></div>
+    </div>
+    <button class="arrow-btn next" data-target="moviesViewport" aria-label="Next movies"><i class="bi bi-chevron-right"></i></button>
+  </section>
+
+  <!-- Series Row -->
+  <h2 class="row-title">Series</h2>
+  <section class="carousel-section">
+    <button class="arrow-btn prev" data-target="seriesViewport" aria-label="Previous series"><i class="bi bi-chevron-left"></i></button>
+    <div id="seriesViewport" class="carousel-viewport">
+      <div id="seriesStrip" class="carousel-strip"></div>
+    </div>
+    <button class="arrow-btn next" data-target="seriesViewport" aria-label="Next series"><i class="bi bi-chevron-right"></i></button>
+  </section>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- App JS -->
+  <script src="main.js"></script>
 </body>
 </html>
