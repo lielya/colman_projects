@@ -1,3 +1,5 @@
+<!--Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888-->
+
 // Select form and inputs
 const form = document.querySelector("form");
 const emailInput = document.querySelector('input[type="email"]');
