@@ -19,7 +19,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const indexRoutes = require("./routes/index");
+const indexRoutes = require("./routes/route");
 app.use("/", indexRoutes);
 
 const PORT = process.env.PORT || 3000;
