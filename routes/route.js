@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/authController");
 const profileController = require("../controllers/profileController");
+const contentController = require("../controllers/contentController");
 
 // Home page
 router.get("/", (req, res) => {
