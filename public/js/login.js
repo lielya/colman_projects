@@ -1,5 +1,3 @@
-// Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888
-
 // Select form and inputs
 const form = document.querySelector("form");
 const emailInput = document.querySelector('input[type="email"]');
@@ -18,33 +16,53 @@ passwordError.style.fontSize = "13px";
 passwordError.style.marginTop = "4px";
 passwordInput.insertAdjacentElement("afterend", passwordError);
 
-// Validation function
-form.addEventListener("submit", function (e) {
+// Validation + server call
+form.addEventListener("submit", async function (e) {
   e.preventDefault();
-  let isValid = true;
 
   // Reset errors
   emailError.textContent = "";
   passwordError.textContent = "";
 
-  // Validate email
-  const emailValue = emailInput.value.trim();
+  // Validate email & password
+  const email = emailInput.value.trim();
+  const password = passwordInput.value.trim();
+
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(emailValue)) {
+  let isValid = true;
+
+  if (!emailRegex.test(email)) {
     emailError.textContent = "Please enter a valid email address.";
     isValid = false;
   }
 
-  // Validate password
-  const passwordValue = passwordInput.value.trim();
-  if (passwordValue.length < 6) {
+  if (password.length < 6) {
     passwordError.textContent = "Password must be at least 6 characters.";
     isValid = false;
   }
 
-  // If valid, save state and redirect
-  if (isValid) {
+  if (!isValid) return;
+
+  // 🔥 Send request to backend for real MongoDB login
+  try {
+    const response = await fetch("http://localhost:3000/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      passwordError.textContent = data.message || "Invalid credentials.";
+      return;
+    }
+
+    // Success → save state and redirect
     localStorage.setItem("isLoggedIn", "true");
     window.location.href = "profiles.html";
+  } catch (err) {
+    console.error("Error:", err);
+    passwordError.textContent = "Server error. Please try again later.";
   }
 });

@@ -9,10 +9,9 @@ router.get("/", (req, res) => {
   res.sendFile("main.html", { root: "public" });
 });
 
-// router.post("/register", authController.registerUser);
-// router.post("/login", authController.loginUser);
+//router.post("/register", authController.registerUser);
 
-// Get profiles
-// router.get("profiles", profileController.getProfiles);
+//Get profiles
+//router.get("profiles", profileController.getProfiles);
 
 module.exports = router;

@@ -1,14 +1,17 @@
 const mongoose = require("mongoose");
 
 const profileSchema = new mongoose.Schema({
-  user: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "User", 
-    required: true 
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'User ID is required']
   },
   name: { 
     type: String, 
-    required: true 
+    required: true,
+    trim: true,
+    minlength: [1, 'Profile name cannot be empty'],
+    maxlength: [20, 'Profile name cannot be more than 20 characters'] 
   },
   avatar: { 
     type: String, 
