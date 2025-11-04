@@ -17,19 +17,19 @@ const profileSchema = new mongoose.Schema({
     type: String, 
     default: "/images/default-avatar.png" 
   },
-  favorites: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Content" 
-    }
-  ],
-  watchHistory: [
-    {
-      contentId: { type: mongoose.Schema.Types.ObjectId, ref: "Content" },
-      progress: { type: Number, default: 0 }, 
-      lastWatched: { type: Date, default: Date.now }
-    }
-  ]
+  // favorites: [
+  //   {
+  //     type: mongoose.Schema.Types.ObjectId,
+  //     ref: "Content" 
+  //   }
+  // ],
+  // watchHistory: [
+  //   {
+  //     contentId: { type: mongoose.Schema.Types.ObjectId, ref: "Content" },
+  //     progress: { type: Number, default: 0 }, 
+  //     lastWatched: { type: Date, default: Date.now }
+  //   }
+  // ]
 });
 
 module.exports = mongoose.model("Profile", profileSchema);

@@ -2,48 +2,60 @@ const express = require("express");
 const mongoose = require("mongoose");
 const path = require("path");
 const dotenv = require("dotenv");
+const seedDatabase = require("./seedDatabase"); // ← import seeder
 const app = express();
 
 dotenv.config();
 
-//connect to mongoDB
-mongoose.connect(process.env.MONGO_URI || "mongodb://localhost/netflixDB", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log("MongoDB connected"))
-  .catch(err => console.log("MongoDB error:", err));
+async function startServer() {
+  try {
+    // Connect to MongoDB
+    await mongoose.connect(process.env.MONGO_URI || "mongodb://localhost/netflixDB", {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    console.log("✅ MongoDB connected");
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+    // Call seeder after successful connection
+    await seedDatabase();
+    console.log("🌱 Seeding completed!");
 
-// Logs all incoming requests with timestamp
-app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.url}`);
-  next();
-});
+    // Middleware
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
 
-app.use(express.static(path.join(__dirname, "public")));
+    // Logs all incoming requests with timestamp
+    app.use((req, res, next) => {
+      const timestamp = new Date().toISOString();
+      console.log(`[${timestamp}] ${req.method} ${req.url}`);
+      next();
+    });
 
-// API Routes
-const indexRoutes = require("./routes/route");
-app.use("/api", indexRoutes);
+    // Serve static files
+    app.use(express.static(path.join(__dirname, "public")));
 
-// Errors
-// 404 handler for API routes
-app.use('/api/*', (req, res) => {
-  res.status(404).json({ error: 'API endpoint not found' });
-});
+    // API Routes
+    const indexRoutes = require("./routes/route");
+    app.use("/api", indexRoutes);
 
-// General error handler
-app.use((err, req, res, next) => {
-  console.error(`Error: ${err.message}`);
-  console.error(err.stack);
-  res.status(500).json({ error: 'Server error occurred' });
-});
+    // 404 handler for API routes
+    app.use("/api/*", (req, res) => {
+      res.status(404).json({ error: "API endpoint not found" });
+    });
 
+    // General error handler
+    app.use((err, req, res, next) => {
+      console.error(`Error: ${err.message}`);
+      console.error(err.stack);
+      res.status(500).json({ error: "Server error occurred" });
+    });
 
-// Start Server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+    // Start Server
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+  } catch (err) {
+    console.error("❌ Failed to start server:", err);
+  }
+}
 
+startServer();
