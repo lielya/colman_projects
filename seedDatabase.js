@@ -655,26 +655,40 @@ if (fargo && profiles[1]) {
       console.log(`Created sample episodes (${insertedEpisodes.length})`);
       
       // Now insert progress with actual episode IDs
-      if (progressToInsert.length && insertedEpisodes.length > 0) {
-        // Map episode IDs properly - filter out any that don't have valid episodeIds
-        const validProgress = progressToInsert.filter(prog => {
-          // If episodeId is already set (from find), verify it exists in inserted episodes
-          if (prog.episodeId) {
-            const exists = insertedEpisodes.some(e => 
-              e._id.toString() === prog.episodeId.toString()
-            );
-            return exists;
-          }
-          return false;
-        });
+      // if (progressToInsert.length && insertedEpisodes.length > 0) {
+      //   // Map episode IDs properly - filter out any that don't have valid episodeIds
+      //   const validProgress = progressToInsert.filter(prog => {
+      //     // If episodeId is already set (from find), verify it exists in inserted episodes
+      //     if (prog.episodeId) {
+      //       const exists = insertedEpisodes.some(e => 
+      //         e._id.toString() === prog.episodeId.toString()
+      //       );
+      //       return exists;
+      //     }
+      //     return false;
+      //   });
         
-        if (validProgress.length > 0) {
-          await Progress.insertMany(validProgress);
-          console.log(`Created sample progress (${validProgress.length})`);
-        } else {
-          console.log('No valid progress records to insert');
+      //   if (validProgress.length > 0) {
+      //     await Progress.insertMany(validProgress);
+      //     console.log(`Created sample progress (${validProgress.length})`);
+      //   } else {
+      //     console.log('No valid progress records to insert');
+      //   }
+      // }
+       progressToInsert.forEach(prog => {
+        if (prog.episodeId) {
+          const matchedEpisode = insertedEpisodes.find(e => e._id.toString() === prog.episodeId.toString());
+          if (matchedEpisode) prog.episodeId = matchedEpisode._id;
         }
+      });
+
+      if (progressToInsert.length > 0) {
+        await Progress.insertMany(progressToInsert);
+        console.log(`Created sample progress (${progressToInsert.length})`);
       }
+       else {
+           console.log('No valid progress records to insert');
+       }
       
       if (likesToInsert.length) {
         await Like.insertMany(likesToInsert);
@@ -683,6 +697,7 @@ if (fargo && profiles[1]) {
     } else {
       console.log('No matching series found for episodes seeding');
     }
+
   
     // //******WatchEvent Sample Data for Statistics*****//
     const watchEvents = await WatchEvent.create([
