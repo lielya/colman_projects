@@ -69,7 +69,7 @@ exports.createProfile = async (req, res) => {
   }
 };
 
-exportsgetLikes = async (req, res) => {
+exports.getLikes = async (req, res) => {
   try {
     const { profileId } = req.params;
 
