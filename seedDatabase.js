@@ -43,6 +43,11 @@ try {
         password: "123456"
     },
     {
+        email: "user3@test.com",
+        username: "user3",
+        password: "123456"
+    },
+    {
         email: "admin@test.com",
         username: "admin",
         password: "123456"
@@ -65,7 +70,13 @@ try {
     userId: users[2]._id,
     name: "Amit",
     avatar: "https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg"
+  },
+  {
+    userId: users[3]._id,
+    name: "Admin",
+    avatar: "https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg"
   }
+
     ]);
     console.log('Created profiles');
 
@@ -693,6 +704,8 @@ if (fargo && profiles[1]) {
       { profileId: profiles[2]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
       { profileId: profiles[2]._id, contentId: content[7]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-17') },
       
+      { profileId: profiles[3]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-17') }
+
     ]);
     console.log('Created watch events');
 
