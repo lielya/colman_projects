@@ -7,7 +7,7 @@ const User = require('./models/User');
 const Episode = require('./models/Episode');
 const Like = require('./models/Like');
 const Progress = require('./models/Progress');
-//const WatchEvent = require('./models/WatchEvent');
+const WatchEvent = require('./models/WatchEvent');
 
 // Connect to MongoDB
 // mongoose.connect('mongodb://localhost:27017/netflixDB')
@@ -26,7 +26,7 @@ try {
     await Episode.deleteMany({});
     await Like.deleteMany({});
     await Progress.deleteMany({});
-    // await WatchEvent.deleteMany({});
+    await WatchEvent.deleteMany({});
     console.log('Cleared existing data');
 
 
@@ -638,35 +638,6 @@ if (fargo && profiles[1]) {
       liked: true
     });
   }
-
-    // const likesToInsert = [];
-
-    // // Profile 1 likes Attack on Titan and The Witcher
-    // if (aot && profiles[0]) {
-    //   likesToInsert.push({
-    //     profileId: profiles[0]._id,
-    //     contentId: aot._id,
-    //     liked: true
-    //   });
-    // }
-
-    // if (witcher && profiles[0]) {
-    //   likesToInsert.push({
-    //     profileId: profiles[0]._id,
-    //     contentId: witcher._id,
-    //     liked: true
-    //   });
-    // }
-
-    // // Profile 2 likes Stranger Things
-    // if (strangerThings && profiles[1]) {
-    //   likesToInsert.push({
-    //     profileId: profiles[1]._id,
-    //     contentId: strangerThings._id,
-    //     liked: true
-    //   });
-    // }
-
     // Insert all the data
     if (episodesToInsert.length) {
       const insertedEpisodes = await Episode.insertMany(episodesToInsert);
@@ -703,30 +674,30 @@ if (fargo && profiles[1]) {
     }
   
     // //******WatchEvent Sample Data for Statistics*****//
-    // const watchEvents = await WatchEvent.create([
-    //   // Profile 1 (Liel) watch events
-    //   { profileId: profiles[0]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
-    //   { profileId: profiles[0]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
-    //   { profileId: profiles[0]._id, contentId: content[2]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-16') },
-    //   { profileId: profiles[0]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
-    //   { profileId: profiles[0]._id, contentId: content[4]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-17') },
+    const watchEvents = await WatchEvent.create([
+      // Profile 1 (Liel) watch events
+      { profileId: profiles[0]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
+      { profileId: profiles[0]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
+      { profileId: profiles[0]._id, contentId: content[2]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[0]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[0]._id, contentId: content[4]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-17') },
       
-    //   // Profile 2 (Lihi) watch events  
-    //   { profileId: profiles[1]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
-    //   { profileId: profiles[1]._id, contentId: content[2]._id, event: 'complete', positionSec: 2200, createdAt: new Date('2025-10-16') },
-    //   { profileId: profiles[1]._id, contentId: content[5]._id, event: 'complete', positionSec: 3000, createdAt: new Date('2025-10-16') },
-    //   { profileId: profiles[1]._id, contentId: content[6]._id, event: 'complete', positionSec: 2600, createdAt: new Date('2025-10-17') },
+      // Profile 2 (Lihi) watch events  
+      { profileId: profiles[1]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
+      { profileId: profiles[1]._id, contentId: content[2]._id, event: 'complete', positionSec: 2200, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[1]._id, contentId: content[5]._id, event: 'complete', positionSec: 3000, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[1]._id, contentId: content[6]._id, event: 'complete', positionSec: 2600, createdAt: new Date('2025-10-17') },
       
-    //   // Profile 3 (Amit) watch events
-    //   { profileId: profiles[2]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
-    //   { profileId: profiles[2]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
-    //   { profileId: profiles[2]._id, contentId: content[7]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-17') },
+      // Profile 3 (Amit) watch events
+      { profileId: profiles[2]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
+      { profileId: profiles[2]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[2]._id, contentId: content[7]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-17') },
       
-    // ]);
-    //console.log('Created watch events');
+    ]);
+    console.log('Created watch events');
 
-    //console.log('Database seeded successfully!');
-    //console.log(`Created: ${users.length} users, ${profiles.length} profiles, ${content.length} content items, ${watchEvents.length} watch events`);
+    console.log('Database seeded successfully!');
+    console.log(`Created: ${users.length} users, ${profiles.length} profiles, ${content.length} content items, ${watchEvents.length} watch events`);
     
   } catch (error) {
     console.error('Error seeding database:', error);
