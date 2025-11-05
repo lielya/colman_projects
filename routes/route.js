@@ -17,19 +17,19 @@ router.get("/", (req, res) => {
 
 // Get all profiles for a specific user
 // Example: GET /api/users/6745a12b3fabc1234567890a/profiles
-router.get("/api/users/:userId/profiles", profileController.getProfiles);
+router.get("/users/:userId/profiles", profileController.getProfiles);
 
 // Create a new profile for a user
-router.post("/api/users/:userId/profiles", profileController.createProfile);
+router.post("/users/:userId/profiles", profileController.createProfile);
 
 // Get profile likes (optional)
-router.get("/api/profiles/:profileId/likes", profileController.getLikes);
+router.get("/profiles/:profileId/likes", profileController.getLikes);
 
 // Like / Unlike content (optional)
-router.post("/api/profiles/:profileId/like", profileController.likeContent);
-router.post("/api/profiles/:profileId/unlike", profileController.unlikeContent);
+router.post("/profiles/:profileId/like", profileController.likeContent);
+router.post("/profiles/:profileId/unlike", profileController.unlikeContent);
 
 // ===== CONTENT ROUTES (if you have them) =====
-// e.g. router.get("/api/content", contentController.getAllContent);
+// e.g. router.get("/content", contentController.getAllContent);
 
 module.exports = router;

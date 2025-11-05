@@ -39,7 +39,7 @@ async function startServer() {
     app.use("/api", indexRoutes);
 
     // 404 handler for API routes
-    app.use("/api/*", (req, res) => {
+    app.use("/*", (req, res) => {
       res.status(404).json({ error: "API endpoint not found" });
     });
 
