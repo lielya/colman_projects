@@ -18,7 +18,7 @@ async function startServer() {
 
     // Call seeder after successful connection
     await seedDatabase();
-    console.log("🌱 Seeding completed!");
+    console.log("Seeding completed!");
 
     // Middleware
     app.use(express.json());
@@ -52,7 +52,7 @@ async function startServer() {
 
     // Start Server
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+    app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
   } catch (err) {
     console.error("❌ Failed to start server:", err);
   }
