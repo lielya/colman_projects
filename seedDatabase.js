@@ -5,7 +5,7 @@ const Content = require('./models/Content');
 const Profile = require('./models/Profile');
 const User = require('./models/User');
 const Episode = require('./models/Episode');
-//const Like = require('./models/Like');
+const Like = require('./models/Like');
 const Progress = require('./models/Progress');
 //const WatchEvent = require('./models/WatchEvent');
 
@@ -24,7 +24,7 @@ try {
     await Content.deleteMany({});
     //***This will also create the collections with no Data, until we add it when adding the functionalities
     await Episode.deleteMany({});
-    // await Like.deleteMany({});
+    await Like.deleteMany({});
     await Progress.deleteMany({});
     // await WatchEvent.deleteMany({});
     console.log('Cleared existing data');
@@ -601,7 +601,44 @@ if (fargo && profiles[1]) {
   );
 }
 
-    // //******Like Sample Data (for profiles)*******//
+ //******Like Sample Data (for profiles)*******//
+    const likesToInsert = [];
+
+  // Profile 1 likes The Boys and The Mandalorian
+  if (theBoys && profiles[0]) {
+    likesToInsert.push({
+      profileId: profiles[0]._id,
+      contentId: theBoys._id,
+      liked: true
+    });
+  }
+
+  if (mandalorian && profiles[0]) {
+    likesToInsert.push({
+      profileId: profiles[0]._id,
+      contentId: mandalorian._id,
+      liked: true
+    });
+  }
+
+  // Profile 2 likes True Detective
+  if (trueDetective && profiles[1]) {
+    likesToInsert.push({
+      profileId: profiles[1]._id,
+      contentId: trueDetective._id,
+      liked: true
+    });
+  }
+
+  // Profile 3 likes House of the Dragon
+  if (houseOfDragon && profiles[2]) {
+    likesToInsert.push({
+      profileId: profiles[2]._id,
+      contentId: houseOfDragon._id,
+      liked: true
+    });
+  }
+
     // const likesToInsert = [];
 
     // // Profile 1 likes Attack on Titan and The Witcher
@@ -630,41 +667,41 @@ if (fargo && profiles[1]) {
     //   });
     // }
 
-    // // Insert all the data
-    // if (episodesToInsert.length) {
-    //   const insertedEpisodes = await Episode.insertMany(episodesToInsert);
-    //   console.log(`Created sample episodes (${insertedEpisodes.length})`);
+    // Insert all the data
+    if (episodesToInsert.length) {
+      const insertedEpisodes = await Episode.insertMany(episodesToInsert);
+      console.log(`Created sample episodes (${insertedEpisodes.length})`);
       
-    //   // Now insert progress with actual episode IDs
-    //   if (progressToInsert.length && insertedEpisodes.length > 0) {
-    //     // Map episode IDs properly - filter out any that don't have valid episodeIds
-    //     const validProgress = progressToInsert.filter(prog => {
-    //       // If episodeId is already set (from find), verify it exists in inserted episodes
-    //       if (prog.episodeId) {
-    //         const exists = insertedEpisodes.some(e => 
-    //           e._id.toString() === prog.episodeId.toString()
-    //         );
-    //         return exists;
-    //       }
-    //       return false;
-    //     });
+      // Now insert progress with actual episode IDs
+      if (progressToInsert.length && insertedEpisodes.length > 0) {
+        // Map episode IDs properly - filter out any that don't have valid episodeIds
+        const validProgress = progressToInsert.filter(prog => {
+          // If episodeId is already set (from find), verify it exists in inserted episodes
+          if (prog.episodeId) {
+            const exists = insertedEpisodes.some(e => 
+              e._id.toString() === prog.episodeId.toString()
+            );
+            return exists;
+          }
+          return false;
+        });
         
-    //     if (validProgress.length > 0) {
-    //       await Progress.insertMany(validProgress);
-    //       console.log(`Created sample progress (${validProgress.length})`);
-    //     } else {
-    //       console.log('No valid progress records to insert');
-    //     }
-    //   }
+        if (validProgress.length > 0) {
+          await Progress.insertMany(validProgress);
+          console.log(`Created sample progress (${validProgress.length})`);
+        } else {
+          console.log('No valid progress records to insert');
+        }
+      }
       
-    //   if (likesToInsert.length) {
-    //     await Like.insertMany(likesToInsert);
-    //     console.log(`Created sample likes (${likesToInsert.length})`);
-    //   }
-    // } else {
-    //   console.log('No matching series found for episodes seeding');
-    // }
-
+      if (likesToInsert.length) {
+        await Like.insertMany(likesToInsert);
+        console.log(`Created sample likes (${likesToInsert.length})`);
+      }
+    } else {
+      console.log('No matching series found for episodes seeding');
+    }
+  
     // //******WatchEvent Sample Data for Statistics*****//
     // const watchEvents = await WatchEvent.create([
     //   // Profile 1 (Liel) watch events
