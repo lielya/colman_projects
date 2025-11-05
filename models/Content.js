@@ -1,14 +1,48 @@
 const mongoose = require("mongoose");
 
 const contentSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  category: { type: String, enum: ['movie', 'series'] },
-  description: String,
-  imageUrl: String,
-  videoUrl: String,
-  likes: { type: Number, default: 0 }
+  id: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true
+  },
+  type: {
+    type: String,
+    enum: ["movie", "series"],
+    required: true
+  },
+  title: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  year: {
+    type: Number,
+    required: true
+  },
+  category: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  poster: {
+    type: String,
+    required: true
+  },
+  backdrop: {
+    type: String,
+    required: true
+  },
+  info: {
+    type: String,
+    required: true
+  },
+  likes: {
+    type: Number,
+    default: 0
+  }
 });
 
 module.exports = mongoose.model("Content", contentSchema);
-
 
