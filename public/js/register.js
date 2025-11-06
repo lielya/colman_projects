@@ -54,7 +54,7 @@ document.getElementById('registerForm').addEventListener('submit', async functio
     setLoadingState(submitBtn, true);
     
     try {
-        const response = await fetch('/api/auth/register', {
+        const response = await fetch('/api/register', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -73,7 +73,7 @@ document.getElementById('registerForm').addEventListener('submit', async functio
             // Registration successful
             showSuccessMessage('Registration successful! Redirecting to login...');
             setTimeout(() => {
-                window.location.href = 'login.html?registered=true';
+                window.location.href = '/login?registered=true';
             }, 2000);
         } else {
             // Handle server errors

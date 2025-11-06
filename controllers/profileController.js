@@ -1,5 +1,7 @@
 const Profile = require('../models/Profile');
+const Like = require('../models/Like');
 const User = require('../models/User');
+
 // get all profiles
 exports.getProfiles = async (req, res) => {
   try {
@@ -8,23 +10,23 @@ exports.getProfiles = async (req, res) => {
     // Verify user exists
     const user = await User.findById(userId);
     if (!user) {
-      return sendError(res, 'User not found', 404);
+      return res.status(404).json({ error: 'User not found' });
     }
 
     const profiles = await Profile.find({ userId }).select('-userId -__v');
 
     // Transform profiles to include 'id' field instead of '_id'
     const transformedProfiles = profiles.map(profile => ({
-      id: profile._id,
+      id: profile._id.toString(),
       name: profile.name,
       avatar: profile.avatar,
-      likes: profile.likes
+      likes: profile.likes || []
     }));
 
-    sendSuccess(res, transformedProfiles, 'Profiles retrieved successfully');
+    res.json(transformedProfiles);
   } catch (error) {
     console.error('Get profiles error:', error);
-    sendError(res, 'Server error retrieving profiles', 500);
+    res.status(500).json({ error: 'Server error retrieving profiles' });
   }
 };
 

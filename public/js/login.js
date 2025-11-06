@@ -3,6 +3,12 @@ const form = document.querySelector("form");
 const emailInput = document.querySelector('input[type="email"]');
 const passwordInput = document.querySelector('input[type="password"]');
 
+// Check if elements exist
+if (!form || !emailInput || !passwordInput) {
+  console.error("Login form elements not found");
+  // Exit early - form elements not found
+} else {
+
 // Create error message containers
 const emailError = document.createElement("div");
 emailError.style.color = "red";
@@ -43,26 +49,39 @@ form.addEventListener("submit", async function (e) {
 
   if (!isValid) return;
 
-  // 🔥 Send request to backend for real MongoDB login
+  // Send request to backend for real MongoDB login
   try {
-    const response = await fetch("http://localhost:3000/api/login", {
+    const response = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      passwordError.textContent = data.message || "Invalid credentials.";
+      let errorMessage = "Invalid credentials.";
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (e) {
+        // If response is not JSON, use status text
+        errorMessage = response.statusText || errorMessage;
+      }
+      passwordError.textContent = errorMessage;
       return;
     }
 
+    const data = await response.json();
+
     // Success → save state and redirect
     localStorage.setItem("isLoggedIn", "true");
-    window.location.href = "profiles.html";
+    if (data.user && data.user.id) {
+      localStorage.setItem("userId", data.user.id);
+      window.location.href = "/profiles";
+    } else {
+      passwordError.textContent = "Login successful but user data missing. Please try again.";
+    }
   } catch (err) {
-    console.error("Error:", err);
-    passwordError.textContent = "Server error. Please try again later.";
+    passwordError.textContent = "Connection error. Please check if the server is running.";
   }
 });
+} // End of else block

@@ -7,12 +7,12 @@ if (nameLS && avatarLS) {
   document.getElementById("welcome-text").textContent = "Hello, " + nameLS;
   document.getElementById("profile-avatar").src = avatarLS; // comes from your profiles flow
 } else {
-  window.location.href = "login.html";
+  window.location.href = "/login";
 }
 document.getElementById("logout-link").addEventListener("click", (e) => {
   e.preventDefault();
   localStorage.clear();
-  window.location.href = "login.html";
+  window.location.href = "/login";
 });
 
 // helpers

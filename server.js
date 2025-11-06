@@ -2,7 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const path = require("path");
 const dotenv = require("dotenv");
-const seedDatabase = require("./seedDatabase"); // ← import seeder
+const seedDatabase = require("./seedDatabase");
 const app = express();
 
 dotenv.config();
@@ -10,21 +10,19 @@ dotenv.config();
 async function startServer() {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGO_URI || "mongodb://localhost/netflixDB", {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
+    const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/netflixDB";
+    await mongoose.connect(mongoUri);
     console.log("✅ MongoDB connected");
 
     // Call seeder after successful connection
     await seedDatabase();
-    console.log("Seeding completed!");
+    console.log("✅ Seeding completed!");
 
     // Middleware
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
-    // Logs all incoming requests with timestamp
+    // Request logging middleware
     app.use((req, res, next) => {
       const timestamp = new Date().toISOString();
       console.log(`[${timestamp}] ${req.method} ${req.url}`);
@@ -34,12 +32,23 @@ async function startServer() {
     // Serve static files
     app.use(express.static(path.join(__dirname, "public")));
 
-    // API Routes
-    const indexRoutes = require("./routes/route");
-    app.use("/api", indexRoutes);
+    // Import route modules
+    const authRoutes = require("./routes/authRoutes");
+    const profileRoutes = require("./routes/profileRoutes");
+    const contentRoutes = require("./routes/contentRoutes");
 
-    // 404 handler for API routes
-    app.use("/*", (req, res) => {
+    // Mount routes - Views routes (no /api prefix)
+    app.use("/", authRoutes); // Auth views: /login, /register
+    app.use("/", profileRoutes); // Profile views: /profiles
+    app.use("/", contentRoutes); // Content views: / (main page)
+
+    // Mount API routes (with /api prefix)
+    app.use("/api", authRoutes); // Auth API: /api/login, /api/register
+    app.use("/api", profileRoutes); // Profile API: /api/users/:userId/profiles, etc.
+    app.use("/api", contentRoutes); // Content API: /api/content, etc.
+
+    // 404 handler for API routes only
+    app.use("/api/*", (req, res) => {
       res.status(404).json({ error: "API endpoint not found" });
     });
 
@@ -52,9 +61,12 @@ async function startServer() {
 
     // Start Server
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running at http://localhost:${PORT}`);
+    });
   } catch (err) {
     console.error("❌ Failed to start server:", err);
+    process.exit(1);
   }
 }
 

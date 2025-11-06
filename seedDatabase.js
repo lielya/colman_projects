@@ -729,9 +729,10 @@ if (fargo && profiles[1]) {
     
   } catch (error) {
     console.error('Error seeding database:', error);
-  } finally {
-    mongoose.connection.close();
+    throw error; // Re-throw to let server handle it
   }
+  // Note: We don't close the connection here because server.js needs it to stay open
+  // mongoose.connection.close(); // ❌ Don't close - server needs the connection!
 }
 
 module.exports = seedDatabase; 
