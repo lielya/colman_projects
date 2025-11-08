@@ -11,9 +11,15 @@ router.get("/profiles", (req, res) => {
 // Profile API Routes
 router.get("/users/:userId/profiles", profileController.getProfiles);
 router.post("/users/:userId/profiles", profileController.createProfile);
+router.get("/profiles/:profileId/feed", profileController.getFeed);
+router.get("/profiles/:profileId/continue", profileController.getContinueWatching);
+router.get("/profiles/:profileId/recommendations", profileController.getRecommendations);
+router.post("/profiles/:profileId/progress", profileController.upsertProgress);
 router.get("/profiles/:profileId/likes", profileController.getLikes);
 router.post("/profiles/:profileId/like", profileController.likeContent);
 router.post("/profiles/:profileId/unlike", profileController.unlikeContent);
+router.get("/content/popular", profileController.getPopularContent);
+router.get("/content/newest", profileController.getNewestByGenre);
 
 module.exports = router;
 
