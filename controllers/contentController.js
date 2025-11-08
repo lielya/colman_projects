@@ -24,7 +24,10 @@ exports.getAllContent = async (req, res) => {
   }
 };
 
-// Search content by title or description
+const escapeRegex = (value = "") =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Search content by title/info/category
 exports.searchContent = async (req, res) => {
   try {
     const q = req.query.q || '';
@@ -32,18 +35,40 @@ exports.searchContent = async (req, res) => {
       return res.status(400).json({ error: 'Invalid search query' });
     }
 
-    const results = await Content.find({ 
-      $or: [
-        { title: new RegExp(q, 'i') },
-        { description: new RegExp(q, 'i') }
-      ]
-    });
+    const term = q.trim();
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
+      100
+    );
 
-    if (results.length === 0) {
-      return res.status(404).json({ message: 'No content found matching your search' });
-    }
+  const safeRegex = new RegExp(escapeRegex(term), "i");
+  const results = await Content.find({
+    title: safeRegex,
+  })
+    .sort({ likes: -1, createdAt: -1, title: 1 })
+    .limit(limit)
+    .lean();
 
-    res.json(results);
+    const mapped = results.map((doc) => ({
+      id: doc._id?.toString?.() || doc.id,
+      type: doc.type,
+      title: doc.title,
+      year: doc.year,
+      category: doc.category,
+      poster: doc.poster,
+      backdrop: doc.backdrop,
+      info: doc.info,
+      likes: doc.likes || 0,
+      score:
+        typeof doc.score === "number"
+          ? doc.score
+          : (doc.likes || 0) + (doc.completions || 0),
+      completions: doc.completions || 0,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+    }));
+
+    res.json({ results: mapped, count: mapped.length });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

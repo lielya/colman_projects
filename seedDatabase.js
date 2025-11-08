@@ -81,7 +81,50 @@ try {
     console.log('Created profiles');
 
     //******Content Sample Data*****//
-    const content = await Content.create([
+    const baselineLikes = {
+      "Breaking Bad": 420,
+      "Lost": 180,
+      "Game of Thrones": 390,
+      "Ozark": 140,
+      "Squid Game": 260,
+      "The Last Dance": 120,
+      "Stranger Things": 350,
+      "Chernobyl": 210,
+      "The Crown": 160,
+      "Narcos": 190,
+      "The Witcher": 175,
+      "Peaky Blinders": 150,
+      "Money Heist": 230,
+      "Black Mirror": 200,
+      "Better Call Saul": 185,
+      "The Boys": 240,
+      "The Mandalorian": 260,
+      "True Detective": 170,
+      "Fargo": 125,
+      "House of the Dragon": 280,
+      "The Shawshank Redemption": 410,
+      "The Lion King": 300,
+      "The Green Mile": 250,
+      "Titanic": 360,
+      "Inception": 380,
+      "Interstellar": 420,
+      "Gladiator": 220,
+      "Forrest Gump": 340,
+      "The Dark Knight": 430,
+      "Pulp Fiction": 390,
+      "Spirited Away": 280,
+      "Whiplash": 210,
+      "Parasite": 260,
+      "Mad Max: Fury Road": 200,
+      "La La Land": 170,
+      "Coco": 290,
+      "Dune": 310,
+      "Arrival": 185,
+      "Inside Out": 275,
+      "The Social Network": 195,
+    };
+
+    const contentData = [
   //series
   {
     id:"s1", type:"series", title:"Breaking Bad", year:2008, category:"Crime",
@@ -324,7 +367,17 @@ try {
     backdrop:"images/movies/the-social-network.jpg",                
     info:"The rise of a social media giant."
   }
-    ]);
+    ];
+
+    const randomLikeDocs = [];
+    contentData.forEach((item) => {
+      const baseline =
+        baselineLikes[item.title] ??
+        Math.floor(Math.random() * 150) + 40;
+      item.likes = baseline;
+    });
+
+    const content = await Content.create(contentData);
     console.log('Created content');
 
     // //******Episodes Sample Data*******//
@@ -693,6 +746,11 @@ if (fargo && profiles[1]) {
       if (likesToInsert.length) {
         await Like.insertMany(likesToInsert);
         console.log(`Created sample likes (${likesToInsert.length})`);
+      }
+
+      if (randomLikeDocs.length) {
+        await Like.insertMany(randomLikeDocs);
+        console.log(`Created random baseline likes (${randomLikeDocs.length})`);
       }
     } else {
       console.log('No matching series found for episodes seeding');
