@@ -125,3 +125,55 @@ exports.getProgress = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+
+// Get content by genre with pagination for infinite scrolling
+exports.getContentByGenre = async (req, res) => {
+  try {
+    const { genre } = req.params;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(process.env.CONTENT_ITEMS_PER_PAGE, 10) || 10;
+    
+    if (!genre || genre === 'all') {
+      return res.status(400).json({ error: 'Genre is required' });
+    }
+
+    const skip = (page - 1) * limit;
+    
+    const content = await Content.find({ category: genre })
+      .sort({ createdAt: -1, year: -1, title: 1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await Content.countDocuments({ category: genre });
+    const hasMore = skip + content.length < total;
+
+    const mapped = content.map((doc) => ({
+      id: doc._id?.toString?.() || doc.id,
+      type: doc.type,
+      title: doc.title,
+      year: doc.year,
+      category: doc.category,
+      poster: doc.poster,
+      backdrop: doc.backdrop,
+      info: doc.info,
+      likes: doc.likes || 0,
+      score: doc.score || (doc.likes || 0) + (doc.completions || 0),
+      completions: doc.completions || 0,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+    }));
+
+    res.json({
+      genre,
+      items: mapped,
+      page,
+      limit,
+      total,
+      hasMore,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};

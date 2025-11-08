@@ -172,7 +172,11 @@ const computePopularity = async (match = {}, limit = 20) => {
   return Content.aggregate(pipeline);
 };
 
-const buildNewestByGenre = async (limitPerGenre = 10) => {
+const buildNewestByGenre = async (limitPerGenre = null) => {
+  // Use environment variable if not provided, default to 10
+  if (limitPerGenre === null) {
+    limitPerGenre = parseInt(process.env.CONTENT_ITEMS_PER_PAGE, 10) || 10;
+  }
   const pipeline = [
     {
       $sort: {
@@ -705,7 +709,7 @@ exports.getFeed = async (req, res) => {
         buildContinueWatching(profile._id),
         buildRecommendations(profile._id),
         buildPopularContent(20),
-        buildNewestByGenre(10),
+        buildNewestByGenre(), // Will use CONTENT_ITEMS_PER_PAGE from env
         Like.find({ profileId: profile._id, liked: true })
           .select("contentId")
           .lean(),

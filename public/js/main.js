@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
     logout: document.getElementById("logout-link"),
     filter: document.getElementById("filterSelect"),
     sort: document.getElementById("sortSelect"),
+    watchedFilter: document.getElementById("watchedFilterSelect"),
     searchToggle: document.getElementById("searchToggle"),
     searchInput: document.getElementById("searchInput"),
     hero: document.getElementById("hero"),
@@ -52,9 +53,11 @@ document.addEventListener("DOMContentLoaded", () => {
     genres: [],
     filter: "all",
     sort: "az",
+    watchedFilter: "all",
     searchQuery: "",
     searchResults: [],
     isLoading: false,
+    genrePagination: {}, // Track pagination state for each genre: { genre: { page: 1, hasMore: true, loading: false } }
   };
 
   let searchTimer = null;
@@ -294,7 +297,7 @@ document.addEventListener("DOMContentLoaded", () => {
           `latest-${slugify(genre)}`,
           `Latest in ${genre}`,
           items,
-          { allowSort: true }
+          { allowSort: true, genre: genre, infiniteScroll: true }
         );
       });
 
@@ -328,8 +331,22 @@ document.addEventListener("DOMContentLoaded", () => {
         const content = item.content || item;
         const merged = mergeContent(content);
 
+        // Filter by category
         if (state.filter !== "all" && merged.category !== state.filter) {
           return null;
+        }
+
+        // Filter by watched status
+        if (state.watchedFilter !== "all") {
+          const hasProgress = state.progressMap.has(merged.id);
+          const isWatched = hasProgress && state.progressMap.get(merged.id)?.watchPercentage > 0;
+          
+          if (state.watchedFilter === "watched" && !isWatched) {
+            return null;
+          }
+          if (state.watchedFilter === "not-watched" && isWatched) {
+            return null;
+          }
         }
 
         return {
@@ -342,11 +359,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (options.allowSort) {
       cards.sort((a, b) => {
-        const titleA = (a?.content?.title || "").toLowerCase();
-        const titleB = (b?.content?.title || "").toLowerCase();
-        return state.sort === "za"
-          ? titleB.localeCompare(titleA)
-          : titleA.localeCompare(titleB);
+        const contentA = a?.content || {};
+        const contentB = b?.content || {};
+        
+        switch (state.sort) {
+          case "za":
+            const titleA = (contentA.title || "").toLowerCase();
+            const titleB = (contentB.title || "").toLowerCase();
+            return titleB.localeCompare(titleA);
+          
+          case "rating":
+            // Sort by score (likes + completions)
+            const scoreA = contentA.score || (contentA.likes || 0) + (contentA.completions || 0);
+            const scoreB = contentB.score || (contentB.likes || 0) + (contentB.completions || 0);
+            return scoreB - scoreA; // Descending order (highest first)
+          
+          case "popularity":
+            // Sort by popularity (likes)
+            const likesA = contentA.likes || 0;
+            const likesB = contentB.likes || 0;
+            return likesB - likesA; // Descending order (highest first)
+          
+          case "az":
+          default:
+            const titleAZ = (contentA.title || "").toLowerCase();
+            const titleBZ = (contentB.title || "").toLowerCase();
+            return titleAZ.localeCompare(titleBZ);
+        }
       });
     }
 
@@ -361,6 +400,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const sectionEl = document.createElement("section");
     sectionEl.className = "carousel-section";
     sectionEl.dataset.section = sectionId;
+    if (options.genre) {
+      sectionEl.dataset.genre = options.genre;
+    }
 
     const viewportId = `${sectionId}-viewport`;
 
@@ -382,7 +424,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const strip = document.createElement("div");
     strip.className = "carousel-strip";
-    strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
+    
+    // Make all carousels circular and infinite
+    // Display each item only once (like Netflix original)
+    // We'll create circular scrolling by jumping to the beginning when reaching the end
+    if (cards.length > 0) {
+      // Display items only once - no duplication
+      strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
+      strip.dataset.originalLength = cards.length;
+      strip.dataset.isCircular = "true";
+    } else {
+      strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
+    }
 
     viewport.appendChild(strip);
     sectionEl.appendChild(prevBtn);
@@ -391,7 +444,35 @@ document.addEventListener("DOMContentLoaded", () => {
 
     elements.sections.appendChild(sectionEl);
 
+    // For circular carousel, start at the beginning of the first section
+    // We'll handle wrapping seamlessly when reaching the end
+    if (cards.length > 0 && strip.dataset.isCircular === "true") {
+      // Wait for layout to calculate, then start at the first section
+      // This ensures the user sees the content starting from the beginning
+      setTimeout(() => {
+        viewport.scrollLeft = 0;
+      }, 50);
+    }
+
     bindArrows(viewportId);
+    
+    // Setup infinite scroll for genre sections
+    if (options.infiniteScroll && options.genre) {
+      setupInfiniteScroll(viewportId, options.genre);
+      // Initialize pagination state if not exists
+      if (!state.genrePagination[options.genre]) {
+        // Check if there might be more content (if we have exactly 10 items, likely more available)
+        const initialItemCount = cards.length;
+        state.genrePagination[options.genre] = {
+          page: 1,
+          hasMore: true, // Will be updated when we try to load more
+          loading: false,
+          initialCount: initialItemCount,
+        };
+        // Pre-check if more content is available
+        checkIfMoreContentAvailable(options.genre, initialItemCount);
+      }
+    }
   }
 
   function mergeContent(content) {
@@ -545,6 +626,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (elements.sort) {
       elements.sort.addEventListener("change", (e) => {
         state.sort = e.target.value || "az";
+        renderSections();
+      });
+    }
+
+    if (elements.watchedFilter) {
+      elements.watchedFilter.addEventListener("change", (e) => {
+        state.watchedFilter = e.target.value || "all";
         renderSections();
       });
     }
@@ -787,30 +875,117 @@ document.addEventListener("DOMContentLoaded", () => {
   const section = viewport.parentElement;
   const prev = section.querySelector(".arrow-btn.prev");
   const next = section.querySelector(".arrow-btn.next");
+  const strip = viewport.querySelector(".carousel-strip");
+  const isCircular = strip?.dataset.isCircular === "true";
+  const originalLength = strip ? parseInt(strip.dataset.originalLength, 10) : 0;
+  let isWrapping = false;
+  let scrollTimeout = null;
 
     const updateDisabled = () => {
-    const maxScroll = viewport.scrollWidth - viewport.clientWidth;
-    if (prev) prev.disabled = viewport.scrollLeft <= 1;
-    if (next) next.disabled = viewport.scrollLeft >= maxScroll - 1;
+      if (isCircular && originalLength > 0) {
+        // For circular carousel, never disable arrows
+        if (prev) prev.disabled = false;
+        if (next) next.disabled = false;
+        
+        // Handle seamless circular scroll wrapping
+        // This creates the illusion of infinite scrolling like Netflix
+        // No duplication - each item appears only once
+        if (!isWrapping) {
+          // Calculate card width more accurately from the actual rendered cards
+          const firstCard = strip.querySelector('.media-card');
+          let cardWidth;
+          if (firstCard) {
+            cardWidth = firstCard.offsetWidth + 12; // card width + gap (12px from CSS)
+          } else {
+            // Fallback to viewport calculation
+            cardWidth = viewport.clientWidth / 7;
+          }
+          
+          const totalWidth = originalLength * cardWidth;
+          const scrollLeft = viewport.scrollLeft;
+          const scrollWidth = viewport.scrollWidth;
+          const clientWidth = viewport.clientWidth;
+          const maxScroll = scrollWidth - clientWidth;
+          
+          // Seamless wrap: if scrolled past the end, jump to beginning
+          // This creates the illusion of infinite scrolling - the beginning appears after the end
+          // Use a larger threshold for smoother wrapping (like Netflix)
+          const threshold = 100; // Larger threshold for smoother wrapping
+          if (maxScroll > 0 && scrollLeft >= maxScroll - threshold) {
+            isWrapping = true;
+            // Jump to the beginning (seamlessly, without animation)
+            viewport.style.scrollBehavior = 'auto';
+            const offset = Math.max(0, scrollLeft - maxScroll);
+            viewport.scrollLeft = offset;
+            // Re-enable smooth scrolling after a brief moment
+            setTimeout(() => {
+              viewport.style.scrollBehavior = 'smooth';
+              isWrapping = false;
+            }, 50);
+          }
+          // Seamless wrap: if scrolled before start, jump to end
+          // This creates the illusion of infinite scrolling - the end appears before the beginning
+          else if (scrollLeft <= threshold && maxScroll > 0) {
+            isWrapping = true;
+            // Jump to the end (seamlessly, without animation)
+            viewport.style.scrollBehavior = 'auto';
+            const offset = Math.max(0, scrollLeft);
+            viewport.scrollLeft = maxScroll - offset;
+            // Re-enable smooth scrolling after a brief moment
+            setTimeout(() => {
+              viewport.style.scrollBehavior = 'smooth';
+              isWrapping = false;
+            }, 50);
+          }
+        }
+      } else {
+        const maxScroll = viewport.scrollWidth - viewport.clientWidth;
+        if (prev) prev.disabled = viewport.scrollLeft <= 1;
+        if (next) next.disabled = viewport.scrollLeft >= maxScroll - 1;
+      }
     };
 
-    const page = () => viewport.clientWidth;
+    // Calculate scroll amount - scroll by approximately 7 cards (one full viewport)
+    const page = () => {
+      const firstCard = strip?.querySelector('.media-card');
+      if (firstCard) {
+        const cardWidth = firstCard.offsetWidth + 12; // card width + gap
+        return cardWidth * 7; // Scroll by 7 cards (one viewport)
+      }
+      return viewport.clientWidth;
+    };
 
     if (prev) {
       prev.addEventListener("click", () => {
-    viewport.scrollBy({ left: -page(), behavior: "smooth" });
-    setTimeout(updateDisabled, 320);
-  });
+        const scrollAmount = -page();
+        viewport.scrollBy({ 
+          left: scrollAmount, 
+          behavior: "smooth" 
+        });
+        setTimeout(updateDisabled, 400);
+      });
     }
 
     if (next) {
       next.addEventListener("click", () => {
-    viewport.scrollBy({ left: page(), behavior: "smooth" });
-    setTimeout(updateDisabled, 320);
-  });
+        const scrollAmount = page();
+        viewport.scrollBy({ 
+          left: scrollAmount, 
+          behavior: "smooth" 
+        });
+        setTimeout(updateDisabled, 400);
+      });
     }
 
-  viewport.addEventListener("scroll", updateDisabled);
+  // Use requestAnimationFrame for smoother scroll handling
+  let rafId = null;
+  viewport.addEventListener("scroll", () => {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      updateDisabled();
+    });
+  }, { passive: true });
+  
     if (window.ResizeObserver) {
       new ResizeObserver(updateDisabled).observe(viewport);
     }
@@ -818,9 +993,216 @@ document.addEventListener("DOMContentLoaded", () => {
   updateDisabled();
 }
 
+  function setupInfiniteScroll(viewportId, genre) {
+    const viewport = document.getElementById(viewportId);
+    if (!viewport) return;
+
+    let scrollTimeout = null;
+    let isLoading = false;
+
+    viewport.addEventListener("scroll", () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        if (isLoading) return;
+        
+        const scrollLeft = viewport.scrollLeft;
+        const scrollWidth = viewport.scrollWidth;
+        const clientWidth = viewport.clientWidth;
+        const scrollPercentage = (scrollLeft + clientWidth) / scrollWidth;
+
+        // Load more when scrolled 70% to the right (for circular carousel, check middle section)
+        const pagination = state.genrePagination[genre];
+        if (pagination && pagination.hasMore && !pagination.loading) {
+          const strip = viewport.querySelector(".carousel-strip");
+          const isCircular = strip?.dataset.isCircular === "true";
+          
+          if (isCircular) {
+            // For circular carousel, check if we're near the end (70% scrolled)
+            const scrollWidth = viewport.scrollWidth;
+            const clientWidth = viewport.clientWidth;
+            const maxScroll = scrollWidth - clientWidth;
+            const scrollPercentage = maxScroll > 0 ? scrollLeft / maxScroll : 0;
+            
+            // Load more when scrolled 70% to the right
+            if (scrollPercentage > 0.7) {
+              isLoading = true;
+              loadMoreGenreContent(genre, viewportId).finally(() => {
+                isLoading = false;
+              });
+            }
+          } else {
+            // For non-circular carousel, use percentage
+            if (scrollPercentage > 0.7) {
+              isLoading = true;
+              loadMoreGenreContent(genre, viewportId).finally(() => {
+                isLoading = false;
+              });
+            }
+          }
+        }
+      }, 150);
+    }, { passive: true });
+  }
+
+  async function checkIfMoreContentAvailable(genre, currentCount) {
+    try {
+      const response = await fetch(
+        `/api/content/genre/${encodeURIComponent(genre)}?page=2`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const pagination = state.genrePagination[genre];
+        if (pagination) {
+          pagination.hasMore = data.hasMore || (data.items && data.items.length > 0);
+        }
+      }
+    } catch (error) {
+      // Silently fail - will be checked when user scrolls
+      console.debug("Pre-check for more content failed:", error);
+    }
+  }
+
+  async function loadMoreGenreContent(genre, viewportId) {
+    const pagination = state.genrePagination[genre];
+    if (!pagination || pagination.loading || !pagination.hasMore) return;
+
+    pagination.loading = true;
+    const nextPage = pagination.page + 1;
+
+    try {
+      const response = await fetch(
+        `/api/content/genre/${encodeURIComponent(genre)}?page=${nextPage}`
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to load more content: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const newItems = data.items || [];
+
+      if (newItems.length === 0) {
+        pagination.hasMore = false;
+        pagination.loading = false;
+        return;
+      }
+
+      // Merge new items into state
+      newItems.forEach((item) => {
+        mergeContent(item);
+        const genreKey = item.category || genre;
+        if (!state.sections.newestByGenre[genreKey]) {
+          state.sections.newestByGenre[genreKey] = [];
+        }
+        // Avoid duplicates
+        const exists = state.sections.newestByGenre[genreKey].some(
+          (existing) => existing.id === item.id || (existing.content && existing.content.id === item.id)
+        );
+        if (!exists) {
+          state.sections.newestByGenre[genreKey].push(item);
+        }
+      });
+
+      // Update pagination state
+      pagination.page = nextPage;
+      pagination.hasMore = data.hasMore || false;
+      pagination.loading = false;
+
+      // Append new items to the carousel
+      const viewport = document.getElementById(viewportId);
+      if (viewport) {
+        const strip = viewport.querySelector(".carousel-strip");
+        if (strip && strip.dataset.isCircular === "true") {
+          const originalLength = parseInt(strip.dataset.originalLength, 10);
+          const currentScroll = viewport.scrollLeft;
+          const cardWidth = viewport.clientWidth / 7;
+          const originalWidth = originalLength * cardWidth;
+          
+          // Get all current items from the genre section
+          const genreKey = genre;
+          const allItems = state.sections.newestByGenre[genreKey] || [];
+          
+          // Rebuild the carousel with all items (including new ones)
+          const allCards = allItems.map((item) => {
+            const merged = mergeContent(item);
+            return {
+              content: merged,
+              reason: null,
+              progress: null,
+            };
+          });
+          
+          // Create circular carousel with all items (no duplication - each item appears once)
+          strip.innerHTML = allCards.map((card) => cardHTML(card, { allowSort: false })).join("");
+          strip.dataset.originalLength = allCards.length.toString();
+
+          // Adjust scroll position to maintain user's view
+          // Since we don't duplicate items, we just maintain the scroll position
+          // Calculate new card width after adding new items
+          const firstCard = strip.querySelector('.media-card');
+          let newCardWidth;
+          if (firstCard) {
+            newCardWidth = firstCard.offsetWidth + 12; // card width + gap
+          } else {
+            newCardWidth = viewport.clientWidth / 7;
+          }
+          
+          // Maintain the same scroll position (relative to the beginning)
+          // The new items will be added at the end, so the user's view stays the same
+          const newScrollWidth = allCards.length * newCardWidth;
+          const newMaxScroll = newScrollWidth - viewport.clientWidth;
+          viewport.scrollLeft = Math.min(currentScroll, newMaxScroll);
+          
+          // Re-bind arrows after DOM update
+          setTimeout(() => {
+            bindArrows(viewportId);
+          }, 50);
+        } else {
+          // Non-circular carousel, just append
+          const cards = newItems.map((item) => {
+            const merged = mergeContent(item);
+            return cardHTML(
+              {
+                content: merged,
+                reason: null,
+                progress: null,
+              },
+              { allowSort: false }
+            );
+          });
+          strip.innerHTML += cards.join("");
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load more genre content:", error);
+      pagination.loading = false;
+    }
+  }
+
   function applyGenreFilter(items) {
-    if (state.filter === "all") return items;
-    return items.filter((item) => item.category === state.filter);
+    let filtered = items;
+    
+    // Filter by category
+    if (state.filter !== "all") {
+      filtered = filtered.filter((item) => item.category === state.filter);
+    }
+    
+    // Filter by watched status
+    if (state.watchedFilter !== "all") {
+      filtered = filtered.filter((item) => {
+        const hasProgress = state.progressMap.has(item.id);
+        const isWatched = hasProgress && state.progressMap.get(item.id)?.watchPercentage > 0;
+        
+        if (state.watchedFilter === "watched") {
+          return isWatched;
+        }
+        if (state.watchedFilter === "not-watched") {
+          return !isWatched;
+        }
+        return true;
+      });
+    }
+    
+    return filtered;
   }
 
   function normalizeAsset(value) {
