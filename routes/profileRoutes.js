@@ -11,6 +11,8 @@ router.get("/profiles", (req, res) => {
 // Profile API Routes
 router.get("/users/:userId/profiles", profileController.getProfiles);
 router.post("/users/:userId/profiles", profileController.createProfile);
+router.put("/profiles/:profileId", profileController.updateProfile);
+router.delete("/profiles/:profileId", profileController.deleteProfile);
 router.get("/profiles/:profileId/feed", profileController.getFeed);
 router.get("/profiles/:profileId/continue", profileController.getContinueWatching);
 router.get("/profiles/:profileId/recommendations", profileController.getRecommendations);
@@ -20,6 +22,9 @@ router.post("/profiles/:profileId/like", profileController.likeContent);
 router.post("/profiles/:profileId/unlike", profileController.unlikeContent);
 router.get("/content/popular", profileController.getPopularContent);
 router.get("/content/newest", profileController.getNewestByGenre);
+// Statistics routes
+router.get("/users/:userId/stats/daily-views", profileController.getDailyViewsStats);
+router.get("/users/:userId/stats/genre-popularity", profileController.getGenrePopularityStats);
 
 module.exports = router;
 

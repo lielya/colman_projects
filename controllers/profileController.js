@@ -385,6 +385,25 @@ exports.createProfile = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
+    // Check if user already has 5 profiles (maximum)
+    const existingProfilesCount = await Profile.countDocuments({ userId });
+    if (existingProfilesCount >= 5) {
+      return res.status(400).json({ 
+        error: "Maximum of 5 profiles allowed per user" 
+      });
+    }
+
+    // Check if profile name already exists for this user
+    const existingProfile = await Profile.findOne({ 
+      userId, 
+      name: name.trim() 
+    });
+    if (existingProfile) {
+      return res.status(409).json({ 
+        error: "Profile name already exists for this user" 
+      });
+    }
+
     const profile = new Profile({
       userId,
       name: name.trim(),
@@ -411,6 +430,88 @@ exports.createProfile = async (req, res) => {
     }
 
     res.status(500).json({ error: "Server error creating profile" });
+  }
+};
+
+// Update profile
+exports.updateProfile = async (req, res) => {
+  try {
+    const { profileId } = req.params;
+    const { name, avatar } = req.body || {};
+
+    const profile = await Profile.findById(profileId);
+    if (!profile) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    // If name is provided, validate and check for duplicates
+    if (name !== undefined) {
+      if (typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "Profile name cannot be empty" });
+      }
+
+      // Check if another profile with the same name exists for this user
+      const existingProfile = await Profile.findOne({
+        userId: profile.userId,
+        name: name.trim(),
+        _id: { $ne: profileId }
+      });
+      if (existingProfile) {
+        return res.status(409).json({ 
+          error: "Profile name already exists for this user" 
+        });
+      }
+
+      profile.name = name.trim();
+    }
+
+    if (avatar !== undefined) {
+      profile.avatar = avatar;
+    }
+
+    await profile.save();
+
+    res.json({
+      message: "Profile updated successfully",
+      profile: {
+        id: profile._id.toString(),
+        name: profile.name,
+        avatar: profile.avatar,
+      },
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({ error: "Server error updating profile" });
+  }
+};
+
+// Delete profile
+exports.deleteProfile = async (req, res) => {
+  try {
+    const { profileId } = req.params;
+
+    const profile = await Profile.findById(profileId);
+    if (!profile) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    // Delete related data (Progress, WatchEvent, Likes)
+    const Progress = require("../models/Progress");
+    const WatchEvent = require("../models/WatchEvent");
+    const Like = require("../models/Like");
+
+    await Promise.all([
+      Progress.deleteMany({ profileId: profile._id }),
+      WatchEvent.deleteMany({ profileId: profile._id }),
+      Like.deleteMany({ profileId: profile._id })
+    ]);
+
+    await Profile.findByIdAndDelete(profileId);
+
+    res.json({ message: "Profile deleted successfully" });
+  } catch (error) {
+    console.error("Delete profile error:", error);
+    res.status(500).json({ error: "Server error deleting profile" });
   }
 };
 
@@ -683,6 +784,162 @@ exports.getPopularContent = async (_req, res) => {
   } catch (error) {
     console.error("Popular content error:", error);
     res.status(500).json({ error: "Server error retrieving popular content" });
+  }
+};
+
+// Get daily views statistics for all profiles
+exports.getDailyViewsStats = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Verify user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get all profiles for this user
+    const profiles = await Profile.find({ userId }).select("_id name").lean();
+
+    // Get watch events for the last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const watchEvents = await WatchEvent.find({
+      profileId: { $in: profiles.map(p => p._id) },
+      createdAt: { $gte: sevenDaysAgo }
+    }).lean();
+
+    // Group by profile and date
+    const stats = {};
+    profiles.forEach(profile => {
+      stats[profile._id.toString()] = {
+        profileName: profile.name,
+        dailyViews: {}
+      };
+    });
+
+    watchEvents.forEach(event => {
+      const profileId = event.profileId.toString();
+      const date = new Date(event.createdAt);
+      const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      if (stats[profileId]) {
+        if (!stats[profileId].dailyViews[dateKey]) {
+          stats[profileId].dailyViews[dateKey] = 0;
+        }
+        stats[profileId].dailyViews[dateKey]++;
+      }
+    });
+
+    // Format for chart.js (last 7 days)
+    const labels = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      labels.push(date.toISOString().split('T')[0]);
+    }
+
+    // Predefined colors for profiles
+    const colors = [
+      { bg: 'rgba(229, 9, 20, 0.6)', border: 'rgba(229, 9, 20, 1)' }, // Netflix red
+      { bg: 'rgba(0, 123, 255, 0.6)', border: 'rgba(0, 123, 255, 1)' }, // Blue
+      { bg: 'rgba(40, 167, 69, 0.6)', border: 'rgba(40, 167, 69, 1)' }, // Green
+      { bg: 'rgba(255, 193, 7, 0.6)', border: 'rgba(255, 193, 7, 1)' }, // Yellow
+      { bg: 'rgba(220, 53, 69, 0.6)', border: 'rgba(220, 53, 69, 1)' }  // Red
+    ];
+
+    const datasets = profiles.map((profile, index) => {
+      const profileId = profile._id.toString();
+      const data = labels.map(date => stats[profileId]?.dailyViews[date] || 0);
+      const color = colors[index % colors.length];
+      return {
+        label: profile.name,
+        data: data,
+        backgroundColor: color.bg,
+        borderColor: color.border,
+        borderWidth: 1
+      };
+    });
+
+    res.json({
+      labels,
+      datasets
+    });
+  } catch (error) {
+    console.error("Get daily views stats error:", error);
+    res.status(500).json({ error: "Server error retrieving daily views statistics" });
+  }
+};
+
+// Get content popularity by genre statistics
+exports.getGenrePopularityStats = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Verify user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get all profiles for this user
+    const profiles = await Profile.find({ userId }).select("_id").lean();
+    const profileIds = profiles.map(p => p._id);
+
+    // Get all watch events for these profiles
+    const watchEvents = await WatchEvent.find({
+      profileId: { $in: profileIds }
+    }).populate({
+      path: 'contentId',
+      select: 'category'
+    }).lean();
+
+    // Count views by genre
+    const genreCounts = {};
+    watchEvents.forEach(event => {
+      if (event.contentId && event.contentId.category) {
+        const genre = event.contentId.category;
+        genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+      }
+    });
+
+    // Format for chart.js pie chart
+    const labels = Object.keys(genreCounts);
+    const data = Object.values(genreCounts);
+    
+    // Predefined colors for genres
+    const genreColors = [
+      { bg: 'rgba(229, 9, 20, 0.6)', border: 'rgba(229, 9, 20, 1)' }, // Netflix red
+      { bg: 'rgba(0, 123, 255, 0.6)', border: 'rgba(0, 123, 255, 1)' }, // Blue
+      { bg: 'rgba(40, 167, 69, 0.6)', border: 'rgba(40, 167, 69, 1)' }, // Green
+      { bg: 'rgba(255, 193, 7, 0.6)', border: 'rgba(255, 193, 7, 1)' }, // Yellow
+      { bg: 'rgba(220, 53, 69, 0.6)', border: 'rgba(220, 53, 69, 1)' }, // Red
+      { bg: 'rgba(108, 117, 125, 0.6)', border: 'rgba(108, 117, 125, 1)' }, // Gray
+      { bg: 'rgba(23, 162, 184, 0.6)', border: 'rgba(23, 162, 184, 1)' }, // Cyan
+      { bg: 'rgba(255, 87, 34, 0.6)', border: 'rgba(255, 87, 34, 1)' }  // Orange
+    ];
+    
+    const backgroundColors = labels.map((_, index) => 
+      genreColors[index % genreColors.length].bg
+    );
+    const borderColors = labels.map((_, index) => 
+      genreColors[index % genreColors.length].border
+    );
+
+    res.json({
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: backgroundColors,
+        borderColor: borderColors,
+        borderWidth: 1
+      }]
+    });
+  } catch (error) {
+    console.error("Get genre popularity stats error:", error);
+    res.status(500).json({ error: "Server error retrieving genre popularity statistics" });
   }
 };
 
