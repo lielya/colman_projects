@@ -1,4 +1,4 @@
-// // Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888
+// Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Check if user is logged in
@@ -8,73 +8,102 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // Load profiles from server
   let profiles = [];
-  try {
-    const response = await fetch(`/api/users/${userId}/profiles`);
-    if (response.ok) {
-      const data = await response.json();
-      profiles = Array.isArray(data) ? data : (data.data || []);
-    } else {
-      console.error("Failed to load profiles:", response.status);
-    }
-  } catch (err) {
-    console.error("Error loading profiles:", err);
-  }
+  let isManageMode = false;
+  let editingProfileId = null;
+  let dailyViewsChart = null;
+  let genrePopularityChart = null;
 
-  // Render profiles dynamically
+  // DOM elements
   const list = document.querySelector(".profiles-list");
-  const form = list?.closest("form");
-  if (!list) return;
+  const manageBtn = document.getElementById("manageBtn");
+  const addProfileBtn = document.getElementById("addProfileBtn");
+  const profileModal = new bootstrap.Modal(document.getElementById("profileModal"));
+  const profileModalTitle = document.getElementById("profileModalTitle");
+  const profileForm = document.getElementById("profileForm");
+  const profileNameInput = document.getElementById("profileName");
+  const profileAvatarInput = document.getElementById("profileAvatar");
+  const saveProfileBtn = document.getElementById("saveProfileBtn");
 
-  // Clear existing hardcoded profiles
-  list.innerHTML = "";
-
-  // Render profiles from server
-  if (profiles.length === 0) {
-    list.innerHTML = "<p style='color: #808080;'>No profiles found. Please create a profile.</p>";
-  } else {
-    profiles.forEach((profile, index) => {
-      const profileDiv = document.createElement("div");
-      profileDiv.className = "profile";
-      profileDiv.innerHTML = `
-        <img src="${profile.avatar || 'https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg'}" 
-             alt="${profile.name}" 
-             class="profile-avatar">
-        <label class="visually-hidden" for="name-${profile.id}">Profile name</label>
-        <input id="name-${profile.id}" 
-               class="profile-name-input" 
-               type="text" 
-               value="${profile.name}" 
-               maxlength="20" />
-      `;
-      list.appendChild(profileDiv);
-    });
+  // Load profiles from server
+  async function loadProfiles() {
+    try {
+      const response = await fetch(`/api/users/${userId}/profiles`);
+      if (response.ok) {
+        const data = await response.json();
+        profiles = Array.isArray(data) ? data : (data.data || []);
+        renderProfiles();
+        updateAddButtonState();
+      } else {
+        console.error("Failed to load profiles:", response.status);
+      }
+    } catch (err) {
+      console.error("Error loading profiles:", err);
+    }
   }
 
-  // Do not let Enter submit the form
-  if (form) {
-    form.addEventListener("submit", (e) => e.preventDefault());
+  // Render profiles
+  function renderProfiles() {
+    if (!list) return;
+    list.innerHTML = "";
+
+    if (profiles.length === 0) {
+      list.innerHTML = "<p style='color: #808080;'>No profiles found. Please create a profile.</p>";
+    } else {
+      profiles.forEach((profile) => {
+        const profileDiv = document.createElement("div");
+        profileDiv.className = `profile ${isManageMode ? 'manage-mode' : ''}`;
+        profileDiv.dataset.profileId = profile.id;
+        profileDiv.innerHTML = `
+          <img src="${profile.avatar || 'https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg'}" 
+               alt="${profile.name}" 
+               class="profile-avatar">
+          <label class="visually-hidden" for="name-${profile.id}">Profile name</label>
+          <input id="name-${profile.id}" 
+                 class="profile-name-input" 
+                 type="text" 
+                 value="${profile.name}" 
+                 maxlength="20"
+                 ${isManageMode ? 'disabled' : ''} />
+          ${isManageMode ? `
+            <div class="profile-actions">
+              <button class="btn btn-profile-action btn-edit" data-action="edit" data-profile-id="${profile.id}">Edit</button>
+              <button class="btn btn-profile-action btn-delete" data-action="delete" data-profile-id="${profile.id}">Delete</button>
+            </div>
+          ` : ''}
+        `;
+        list.appendChild(profileDiv);
+      });
+    }
+
+    // Attach event listeners
+    if (!isManageMode) {
+      attachProfileClickListeners();
+    } else {
+      attachManageModeListeners();
+    }
   }
 
-  // Allow typing in the name inputs without redirect
-  list.addEventListener("click", (e) => {
-    // If the click is on the input, do nothing
+  // Attach click listeners for profile selection
+  function attachProfileClickListeners() {
+    list.addEventListener("click", handleProfileClick);
+  }
+
+  // Handle profile click (navigate to main page)
+  function handleProfileClick(e) {
     if (e.target.matches(".profile-name-input")) {
       e.stopPropagation();
       return;
     }
 
-    // Redirect only when clicking the avatar image
     if (e.target.matches(".profile-avatar")) {
       const card = e.target.closest(".profile");
       if (!card) return;
       
-      // Get profile ID from the input ID
       const input = card.querySelector(".profile-name-input");
       if (!input) return;
       
-      const profileId = input.id.replace("name-", "");
+      const profileId = card.dataset.profileId;
       const profile = profiles.find(p => String(p.id) === profileId);
       
       if (!profile) {
@@ -82,49 +111,270 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // Read the current typed name from the input, default to preset
       const typedName = (input.value || "").trim();
       const selected = { ...profile };
       if (typedName) selected.name = typedName;
 
-      // Persist for main.html
       localStorage.setItem("selectedProfileId", String(selected.id));
       localStorage.setItem("selectedProfileName", selected.name);
       localStorage.setItem("selectedProfileAvatar", selected.avatar || "");
 
-      // Navigate to main page
       window.location.href = "/";
+    }
+  }
+
+  // Attach manage mode listeners
+  function attachManageModeListeners() {
+    list.querySelectorAll('[data-action="edit"]').forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const profileId = e.target.dataset.profileId;
+        editProfile(profileId);
+      });
+    });
+
+    list.querySelectorAll('[data-action="delete"]').forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const profileId = e.target.dataset.profileId;
+        deleteProfile(profileId);
+      });
+    });
+  }
+
+  // Toggle manage mode
+  manageBtn.addEventListener("click", () => {
+    isManageMode = !isManageMode;
+    manageBtn.classList.toggle("active", isManageMode);
+    manageBtn.textContent = isManageMode ? "DONE" : "MANAGE PROFILES";
+    renderProfiles();
+  });
+
+  // Add profile button
+  addProfileBtn.addEventListener("click", () => {
+    editingProfileId = null;
+    profileModalTitle.textContent = "Add Profile";
+    profileForm.reset();
+    profileNameInput.value = "";
+    profileAvatarInput.value = "";
+    profileModal.show();
+  });
+
+  // Save profile
+  saveProfileBtn.addEventListener("click", async () => {
+    const name = profileNameInput.value.trim();
+    if (!name) {
+      alert("Profile name is required");
+      return;
+    }
+
+    const avatar = profileAvatarInput.value.trim() || undefined;
+
+    try {
+      if (editingProfileId) {
+        // Update existing profile
+        const response = await fetch(`/api/profiles/${editingProfileId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, avatar })
+        });
+
+        if (response.ok) {
+          await loadProfiles();
+          profileModal.hide();
+        } else {
+          const error = await response.json();
+          alert(error.error || "Failed to update profile");
+        }
+      } else {
+        // Create new profile
+        const response = await fetch(`/api/users/${userId}/profiles`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, avatar })
+        });
+
+        if (response.ok) {
+          await loadProfiles();
+          profileModal.hide();
+        } else {
+          const error = await response.json();
+          alert(error.error || "Failed to create profile");
+        }
+      }
+    } catch (err) {
+      console.error("Error saving profile:", err);
+      alert("An error occurred while saving the profile");
     }
   });
 
-  // Optional quality of life: save edits on blur so name persists for next time
-  list.addEventListener("blur", (e) => {
-    if (!e.target.matches(".profile-name-input")) return;
-    
-    const profileId = e.target.id.replace("name-", "");
+  // Edit profile
+  function editProfile(profileId) {
     const profile = profiles.find(p => String(p.id) === profileId);
-    
     if (!profile) return;
 
-    const newName = e.target.value.trim();
-    if (!newName) return;
+    editingProfileId = profileId;
+    profileModalTitle.textContent = "Edit Profile";
+    profileNameInput.value = profile.name;
+    profileAvatarInput.value = profile.avatar || "";
+    profileModal.show();
+  }
 
-    // Store a small map of custom names by id
-    const customNames =
-      JSON.parse(localStorage.getItem("customProfileNames") || "{}") || {};
-    customNames[profile.id] = newName;
-    localStorage.setItem("customProfileNames", JSON.stringify(customNames));
-  }, true);
+  // Delete profile
+  async function deleteProfile(profileId) {
+    if (!confirm("Are you sure you want to delete this profile? This action cannot be undone.")) {
+      return;
+    }
 
-  // Optional load of previously saved custom names
-  try {
-    const customNames =
-      JSON.parse(localStorage.getItem("customProfileNames") || "{}") || {};
-    const inputs = list.querySelectorAll(".profile-name-input");
-    inputs.forEach((inp, i) => {
-      const id = profiles[i]?.id;
-      if (id && customNames[id]) inp.value = customNames[id];
+    try {
+      const response = await fetch(`/api/profiles/${profileId}`, {
+        method: "DELETE"
+      });
+
+      if (response.ok) {
+        await loadProfiles();
+        await loadCharts(); // Reload charts after deletion
+      } else {
+        const error = await response.json();
+        alert(error.error || "Failed to delete profile");
+      }
+    } catch (err) {
+      console.error("Error deleting profile:", err);
+      alert("An error occurred while deleting the profile");
+    }
+  }
+
+  // Update add button state
+  function updateAddButtonState() {
+    if (addProfileBtn) {
+      addProfileBtn.disabled = profiles.length >= 5;
+    }
+  }
+
+  // Load and render charts
+  async function loadCharts() {
+    try {
+      // Load daily views chart
+      const dailyViewsResponse = await fetch(`/api/users/${userId}/stats/daily-views`);
+      if (dailyViewsResponse.ok) {
+        const dailyViewsData = await dailyViewsResponse.json();
+        renderDailyViewsChart(dailyViewsData);
+      }
+
+      // Load genre popularity chart
+      const genreResponse = await fetch(`/api/users/${userId}/stats/genre-popularity`);
+      if (genreResponse.ok) {
+        const genreData = await genreResponse.json();
+        renderGenrePopularityChart(genreData);
+      }
+    } catch (err) {
+      console.error("Error loading charts:", err);
+    }
+  }
+
+  // Render daily views chart (bar chart)
+  function renderDailyViewsChart(data) {
+    const ctx = document.getElementById("dailyViewsChart");
+    if (!ctx) return;
+
+    // Destroy existing chart if it exists
+    if (dailyViewsChart) {
+      dailyViewsChart.destroy();
+    }
+
+    // Format dates for display
+    const formattedLabels = data.labels.map(date => {
+      const d = new Date(date);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     });
-  } catch {}
-});
 
+    dailyViewsChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: formattedLabels,
+        datasets: data.datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: {
+            display: true,
+            text: 'Daily Views by Profile (Last 7 Days)',
+            color: '#fff',
+            font: {
+              size: 18
+            }
+          },
+          legend: {
+            labels: {
+              color: '#fff'
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: '#fff'
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
+            }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: '#fff',
+              stepSize: 1
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Render genre popularity chart (pie chart)
+  function renderGenrePopularityChart(data) {
+    const ctx = document.getElementById("genrePopularityChart");
+    if (!ctx) return;
+
+    // Destroy existing chart if it exists
+    if (genrePopularityChart) {
+      genrePopularityChart.destroy();
+    }
+
+    genrePopularityChart = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels: data.labels,
+        datasets: data.datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: {
+            display: true,
+            text: 'Content Popularity by Genre',
+            color: '#fff',
+            font: {
+              size: 18
+            }
+          },
+          legend: {
+            position: 'right',
+            labels: {
+              color: '#fff',
+              padding: 15
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Initialize
+  await loadProfiles();
+  await loadCharts();
+});

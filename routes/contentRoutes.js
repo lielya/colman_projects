@@ -11,6 +11,7 @@ router.get("/", (req, res) => {
 // Content API Routes
 router.get("/content", contentController.getAllContent);
 router.get("/content/search", contentController.searchContent);
+router.get("/content/genre/:genre", contentController.getContentByGenre);
 router.get("/content/:contentId/episodes", contentController.getEpisodes);
 router.get("/content/:contentId/watch-events", contentController.getWatchEvents);
 router.get("/users/:userId/content/:contentId/progress", contentController.getProgress);

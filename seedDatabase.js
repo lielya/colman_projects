@@ -18,7 +18,18 @@ const WatchEvent = require('./models/WatchEvent');
 // Seed function
 async function seedDatabase() {
 try {
-    // Clear existing data
+    // Check if database already has data
+    const existingUsers = await User.countDocuments({});
+    const existingContent = await Content.countDocuments({});
+    
+    // If database already has data, skip seeding to preserve user-created data
+    if (existingUsers > 0 || existingContent > 0) {
+      console.log('Database already contains data. Skipping seed to preserve existing data.');
+      return;
+    }
+    
+    // Only clear and seed if database is empty
+    console.log('Database is empty. Starting seed process...');
     await User.deleteMany({});
     await Profile.deleteMany({});
     await Content.deleteMany({});
