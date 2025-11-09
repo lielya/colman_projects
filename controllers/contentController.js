@@ -64,6 +64,7 @@ exports.searchContent = async (req, res) => {
           ? doc.score
           : (doc.likes || 0) + (doc.completions || 0),
       completions: doc.completions || 0,
+      actors: doc.actors || [],
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     }));
@@ -79,13 +80,87 @@ exports.searchContent = async (req, res) => {
 exports.getEpisodes = async (req, res) => {
   try {
     const contentId = req.params.contentId;
-    const episodes = await Episode.find({ contentId });
+    const episodes = await Episode.find({ seriesId: contentId })
+      .sort({ season: 1, episode: 1 });
 
     if (episodes.length === 0) {
       return res.status(404).json({ message: 'No episodes found for this content' });
     }
 
     res.json(episodes);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Get a single content by ID
+exports.getContentById = async (req, res) => {
+  try {
+    const contentId = req.params.contentId;
+    const content = await Content.findById(contentId).lean();
+    
+    if (!content) {
+      return res.status(404).json({ error: 'Content not found' });
+    }
+
+    res.json({
+      id: content._id?.toString() || content.id,
+      type: content.type,
+      title: content.title,
+      year: content.year,
+      category: content.category,
+      poster: content.poster,
+      backdrop: content.backdrop,
+      info: content.info,
+      likes: content.likes || 0,
+      actors: content.actors || [],
+      createdAt: content.createdAt,
+      updatedAt: content.updatedAt,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Get first episode (season 1, episode 1) for a series
+exports.getFirstEpisode = async (req, res) => {
+  try {
+    const contentId = req.params.contentId;
+    
+    // Verify it's a series
+    const content = await Content.findById(contentId);
+    if (!content) {
+      return res.status(404).json({ error: 'Content not found' });
+    }
+    
+    if (content.type !== 'series') {
+      return res.status(400).json({ error: 'Content is not a series' });
+    }
+
+    // Find first episode (season 1, episode 1)
+    const firstEpisode = await Episode.findOne({ 
+      seriesId: contentId,
+      season: 1,
+      episode: 1
+    });
+
+    if (!firstEpisode) {
+      return res.status(404).json({ message: 'No first episode found for this series' });
+    }
+
+    res.json({
+      id: firstEpisode._id.toString(),
+      title: firstEpisode.title,
+      season: firstEpisode.season,
+      episode: firstEpisode.episode,
+      description: firstEpisode.description,
+      durationSec: firstEpisode.durationSec,
+      videoUrl: firstEpisode.videoUrl,
+      thumbnailUrl: firstEpisode.thumbnailUrl,
+      airDate: firstEpisode.airDate
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -160,6 +235,7 @@ exports.getContentByGenre = async (req, res) => {
       likes: doc.likes || 0,
       score: doc.score || (doc.likes || 0) + (doc.completions || 0),
       completions: doc.completions || 0,
+      actors: doc.actors || [],
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     }));

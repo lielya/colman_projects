@@ -38,6 +38,7 @@ const mapContent = (doc, likeMap = null) => {
     score: doc.score || 0,
     totalLikes,
     completions: doc.completions || 0,
+    actors: doc.actors || [],
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };

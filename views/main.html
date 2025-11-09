@@ -52,6 +52,10 @@
     .btn-hero{ border-radius:6px; padding:8px 14px; font-weight:600; }
     .btn-hero-info{ background:rgba(109,109,110,0.7); border:1px solid rgba(255,255,255,0.25); color:#fff; }
     .btn-hero-info:hover{ background:rgba(109,109,110,0.85); color:#fff; }
+    #heroWatchFromBeginning{ 
+      background:#fff; color:#000; border:1px solid #fff; font-size:.9rem; padding:6px 12px;
+    }
+    #heroWatchFromBeginning:hover{ background:#f0f0f0; border-color:#f0f0f0; color:#000; }
 
     /* Controls bar */
     .controls-bar{
@@ -132,9 +136,94 @@
     .progress-value{ position:absolute; top:0; left:0; bottom:0; background:#e50914; }
     .progress-label{ font-size:.8rem; color:#b3b3b3; margin-top:6px; }
     .resume-btn{ font-size:.75rem; letter-spacing:0.5px; }
+    .watch-from-beginning-btn{
+      font-size:.7rem; letter-spacing:0.3px; padding:4px 8px; 
+      background:#fff; color:#000; border:1px solid #fff;
+      white-space:nowrap; font-weight:500;
+    }
+    .watch-from-beginning-btn:hover{ background:#f0f0f0; border-color:#f0f0f0; color:#000; }
     .card-meta{ margin-top:8px; display:flex; flex-wrap:wrap; gap:12px; font-size:.75rem; color:#9b9b9b; }
     .card-meta .meta-item{ display:flex; align-items:center; gap:4px; }
     .reason{ color:#b3b3b3; font-style:italic; }
+
+    /* Episodes Modal */
+    .episodes-modal{
+      position:fixed; inset:0; z-index:2000; display:flex; align-items:center; justify-content:center;
+      animation:fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+    .episodes-modal-overlay{
+      position:absolute; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(4px);
+    }
+    .episodes-modal-content{
+      position:relative; background:#181818; border-radius:12px; max-width:900px; width:90%;
+      max-height:85vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.8);
+      animation:slideUp 0.3s ease;
+    }
+    @keyframes slideUp{ from{transform:translateY(30px); opacity:0;} to{transform:translateY(0); opacity:1;} }
+    .episodes-modal-close{
+      position:absolute; top:15px; right:15px; background:rgba(255,255,255,0.1); border:none;
+      color:#fff; width:36px; height:36px; border-radius:50%; display:flex; align-items:center;
+      justify-content:center; cursor:pointer; z-index:10; transition:background 0.2s ease;
+    }
+    .episodes-modal-close:hover{ background:rgba(255,255,255,0.2); }
+    .episodes-modal-header{
+      padding:30px 30px 20px; border-bottom:1px solid #333;
+    }
+    .episodes-modal-title{ font-size:1.8rem; font-weight:700; margin:0 0 8px 0; }
+    .episodes-modal-info{ color:#b3b3b3; font-size:0.95rem; margin:0; }
+    .episodes-modal-body{
+      padding:20px 30px 30px; overflow-y:auto; flex:1;
+    }
+    .episodes-loading{ text-align:center; padding:40px; color:#b3b3b3; }
+    .episodes-list{ display:flex; flex-direction:column; gap:12px; }
+    .episode-item{
+      display:flex; align-items:center; gap:15px; padding:15px; background:rgba(255,255,255,0.05);
+      border:1px solid rgba(255,255,255,0.1); border-radius:8px; cursor:pointer;
+      transition:background 0.2s ease, border-color 0.2s ease;
+    }
+    .episode-item:hover{ background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.2); }
+    .episode-number{
+      min-width:50px; text-align:center; font-weight:600; color:#fff; font-size:1.1rem;
+    }
+    .episode-info{ flex:1; }
+    .episode-title{ font-size:1rem; font-weight:600; margin:0 0 6px 0; color:#fff; }
+    .episode-meta{
+      display:flex; align-items:center; gap:12px; font-size:0.85rem; color:#b3b3b3;
+    }
+    .episode-description{ font-size:0.9rem; color:#ddd; margin-top:8px; line-height:1.4; }
+    .episode-play-btn{
+      background:#e50914; color:#fff; border:none; padding:8px 20px; border-radius:6px;
+      font-weight:600; cursor:pointer; transition:background 0.2s ease;
+    }
+    .episode-play-btn:hover{ background:#f40612; }
+    .episodes-seasons{ margin-bottom:20px; }
+    .season-header{
+      font-size:1.2rem; font-weight:600; margin:0 0 15px 0; padding-bottom:10px;
+      border-bottom:2px solid #333; color:#fff;
+    }
+
+    /* Content Info Section */
+    .content-info-section{ margin-bottom:25px; padding-bottom:20px; border-bottom:1px solid #333; }
+    .content-details{ display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-bottom:20px; }
+    .content-detail-item{ display:flex; flex-direction:column; gap:5px; }
+    .content-detail-label{ font-size:0.85rem; color:#b3b3b3; font-weight:500; }
+    .content-detail-value{ font-size:0.95rem; color:#fff; }
+    .content-actors-section{ margin-top:20px; }
+    .actors-title{ font-size:1.1rem; font-weight:600; margin:0 0 12px 0; color:#fff; }
+    .actors-list{ display:flex; flex-wrap:wrap; gap:10px; }
+    .actor-link{
+      display:inline-block; padding:6px 14px; background:rgba(255,255,255,0.1);
+      border:1px solid rgba(255,255,255,0.2); border-radius:6px; color:#fff;
+      text-decoration:none; font-size:0.9rem; transition:background 0.2s ease, border-color 0.2s ease;
+    }
+    .actor-link:hover{ background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.3); color:#fff; }
+    .movie-actions{ display:flex; gap:12px; margin-top:20px; flex-wrap:wrap; }
+    .movie-play-btn{ background:#e50914; color:#fff; border:none; padding:10px 24px; border-radius:6px;
+      font-weight:600; cursor:pointer; transition:background 0.2s ease; font-size:1rem;
+    }
+    .movie-play-btn:hover{ background:#f40612; }
+    .episodes-section{ margin-top:25px; padding-top:20px; border-top:1px solid #333; }
   </style>
 </head>
 <body>
@@ -192,6 +281,7 @@
       <p id="heroDesc" class="hero-desc"></p>
       <div class="d-flex gap-2">
         <button id="heroPlay" class="btn btn-light btn-hero"><i class="bi bi-play-fill me-1"></i>Play</button>
+        <button id="heroWatchFromBeginning" class="btn btn-hero btn-hero-info" style="display:none;"><i class="bi bi-arrow-clockwise me-1"></i>Watch from Beginning</button>
         <button id="heroInfo" class="btn btn-hero btn-hero-info"><i class="bi bi-info-circle me-1"></i>Info</button>
       </div>
     </div>
@@ -226,6 +316,23 @@
 
   <!-- Dynamic Feed Sections -->
   <section id="feedSections" class="feed-sections"></section>
+
+  <!-- Episodes Modal -->
+  <div id="episodesModal" class="episodes-modal" style="display: none;">
+    <div class="episodes-modal-overlay" id="episodesModalOverlay"></div>
+    <div class="episodes-modal-content">
+      <button class="episodes-modal-close" id="episodesModalClose">
+        <i class="bi bi-x-lg"></i>
+      </button>
+      <div class="episodes-modal-header">
+        <h2 id="episodesModalTitle" class="episodes-modal-title"></h2>
+        <p id="episodesModalInfo" class="episodes-modal-info"></p>
+      </div>
+      <div class="episodes-modal-body" id="episodesModalBody">
+        <div class="episodes-loading">Loading episodes...</div>
+      </div>
+    </div>
+  </div>
 
   <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
