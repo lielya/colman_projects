@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Netflix Admin: Add Content</title>
     
-    <link rel="icon" href="/images/netflix-logo-icon.png" type="image/x-icon">
+    <link rel="icon" href="https://www.freepnglogos.com/uploads/netflix-logo-0.png" type="image/x-icon">
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     
@@ -14,30 +14,28 @@
     
     <style>
         body {
-            /* --- 👇 הנה הרקע החדש שהחלפנו 👇 --- */
             background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url('https://assets.nflxext.com/ffe/siteui/vlv3/a1dc92ca-091d-4ca9-a05b-8cd44bbfce6a/f9368347-e982-4856-a5a4-396796381f28/RS-en-20191230-popsignuptwoweeks-perspective_alpha_website_large.jpg') no-repeat center center fixed;
-            /* --- 👆 סוף השינוי 👆 --- */
             background-size: cover;
             color: #fff;
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 40px 0; /* הוספנו קצת ריווח למעלה ולמטה */
+            padding: 40px 0; 
         }
 
         .admin-container {
-            background-color: rgba(0, 0, 0, 0.85); /* רקע שחור חצי-שקוף לטופס */
+            background-color: rgba(0, 0, 0, 0.85); 
             padding: 40px;
             border-radius: 8px;
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
-            max-width: 800px; /* רוחב מקסימלי לטופס */
+            max-width: 800px; 
             width: 100%;
             margin: auto;
         }
 
         .admin-container h1 {
-            color: #E50914; /* אדום של נטפליקס */
+            color: #E50914; 
             text-align: center;
             margin-bottom: 30px;
             font-weight: 700;
@@ -47,23 +45,19 @@
             display: block;
             margin: 0 auto 20px auto;
             width: 120px;
-            /* ודא שהתמונה הזו קיימת אצלך ב-public/images/netflix-logo-full.png */
         }
 
-        /* --- CSS מעודכן לגריד --- */
         .form-label, .col-form-label {
             color: #ccc;
             font-weight: 500;
         }
 
-        /* יישור התוויות לימין על מסכים גדולים (לא ניידים) */
         @media (min-width: 576px) { 
             .col-form-label {
                 text-align: right;
                 padding-right: 0;
             }
         }
-        /* --- סוף ה-CSS המעודכן --- */
 
         .form-control, .form-select {
             background-color: #333;
@@ -80,7 +74,6 @@
             color: #fff;
         }
 
-        /* שינוי צבע הקלט כשהוא מלא (Autocomplete) */
         .form-control:-webkit-autofill,
         .form-control:-webkit-autofill:hover, 
         .form-control:-webkit-autofill:focus,
@@ -103,7 +96,7 @@
         }
 
         .btn-netflix:hover {
-            background-color: #F40612; /* אדום קצת יותר בהיר */
+            background-color: #F40612; 
             border-color: #F40612;
             color: #fff;
         }
@@ -114,6 +107,7 @@
             padding: 10px;
             border-radius: 5px;
             font-weight: bold;
+            word-wrap: break-word; /* למקרה שהשגיאה ארוכה מאוד */
         }
         .alert-success {
             background-color: #28a745;
@@ -124,11 +118,10 @@
             color: #fff;
         }
 
-        /* התאמות למסכים קטנים (ניידים) */
         @media (max-width: 768px) {
             body {
                 padding: 15px;
-                align-items: flex-start; /* הצמד ללמעלה בנייד */
+                align-items: flex-start; 
             }
             .admin-container {
                 padding: 25px;
@@ -142,7 +135,7 @@
 <body>
     
     <div class="admin-container">
-        <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix Logo" class="logo">
+        <img src="/images/netflix-logo-full.png" alt="Netflix Logo" class="logo">
         <h1>Add New Content</h1>
 
         <form id="addContentForm" enctype="multipart/form-data">
@@ -193,7 +186,8 @@
                 </div>
             </div>
 
-            <div class="row mb-3"> <label for="info" class="col-sm-3 col-form-label">Info (Summary)</label>
+            <div class="row mb-3"> 
+                <label for="info" class="col-sm-3 col-form-label">Info (Summary)</label>
                 <div class="col-sm-9">
                     <textarea class="form-control" id="info" name="info" rows="3" required></textarea>
                 </div>
@@ -241,73 +235,82 @@
             <button type="submit" class="btn btn-netflix">Add Content</button>
             <div id="message" class="alert-message d-none"></div>
         </form>
-        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
         document.getElementById('addContentForm').addEventListener('submit', async function(event) {
-            event.preventDefault(); // מונע שליחה רגילה של הטופס
+            event.preventDefault(); 
 
             const form = event.target;
             const formData = new FormData(form);
             const messageDiv = document.getElementById('message');
             const submitButton = form.querySelector('button[type="submit"]');
 
-            // השבת את הכפתור והצג טעינה
             submitButton.disabled = true;
             submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...';
+            messageDiv.classList.add('d-none'); // הסתר הודעות ישנות
 
             try {
-                // שלח את הנתונים ל-API שיצרנו
                 const response = await fetch('/admin/add-content', {
                     method: 'POST',
-                    body: formData // FormData מטפל אוטומטית ב-multipart/form-data
+                    body: formData
                 });
 
-                // נסה לקרוא את התשובה כ-JSON
+                // --- 👇 התיקון הקריטי נמצא כאן 👇 ---
+                // 1. קרא את התשובה כטקסט, פעם אחת בלבד
+                const responseText = await response.text();
+                
                 let result;
                 try {
-                    result = await response.json();
+                    // 2. נסה לפענח את הטקסט כ-JSON
+                    result = JSON.parse(responseText);
                 } catch (jsonError) {
-                    // אם השרת החזיר HTML (כמו דף שגיאה), נטפל בזה
+                    // 3. אם זה נכשל (כי זה HTML של שגיאה), נטפל בזה
                     if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(errorText || `Server error: ${response.status}`);
+                        // responseText מכיל את הודעת השגיאה מהשרת
+                        throw new Error(responseText || `Server error: ${response.status}`);
                     }
-                    result = { message: "Success, but invalid JSON response." };
+                    // אם response.ok=true אבל זה לא JSON, זה מקרה מוזר
+                    result = { message: "Success, but server response was not valid JSON." };
                 }
-
+                // --- 👆 סוף התיקון 👆 ---
 
                 if (response.ok) {
                     messageDiv.classList.remove('d-none', 'alert-danger');
                     messageDiv.classList.add('alert-success');
                     messageDiv.textContent = result.message || "Content added successfully!";
-                    form.reset(); // נקה את הטופס
+                    form.reset(); 
                     
-                    // החזר את הכפתור למצבו הרגיל
                     submitButton.disabled = false;
                     submitButton.textContent = 'Add Content';
 
-                    // המתן 2 שניות והעבר לדף הראשי
                     setTimeout(() => {
                         window.location.href = '/main.html'; 
                     }, 2000); 
                 } else {
-                    // הצג שגיאה מהשרת
+                    // אם זה היה JSON אבל עם שגיאה (כמו "Unique ID already exists")
                     throw new Error(result.error || 'An unknown error occurred.');
                 }
             } catch (error) {
                 console.error('Error submitting form:', error);
                 messageDiv.classList.remove('d-none', 'alert-success');
                 messageDiv.classList.add('alert-danger');
-                messageDiv.textContent = error.message;
+                
+                // נקה את הודעת השגיאה (לפעמים היא מכילה HTML)
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = error.message;
+                const cleanError = tempDiv.textContent || tempDiv.innerText || error.message;
+                
+                // הצג רק את החלק הרלוונטי של השגיאה
+                const errorLines = cleanError.split('\n');
+                messageDiv.textContent = errorLines[0] || "An error occurred."; // הצג רק את השורה הראשונה
 
-                // החזר את הכפתור למצבו הרגיל
                 submitButton.disabled = false;
                 submitButton.textContent = 'Add Content';
             }
         });
     </script>
-</body>
+    </body>
 </html>
