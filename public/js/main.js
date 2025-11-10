@@ -67,6 +67,9 @@ document.addEventListener("DOMContentLoaded", () => {
     genrePagination: {}, // Track pagination state for each genre: { genre: { page: 1, hasMore: true, loading: false } }
   };
 
+  const CARD_GAP = 12;
+  const MIN_LOOP_ITEMS = 8;
+
   let searchTimer = null;
 
   init().catch((err) => {
@@ -114,6 +117,20 @@ document.addEventListener("DOMContentLoaded", () => {
       const name = state.profile.name || "Viewer";
       elements.welcome.textContent = `Hello, ${name}`;
       localStorage.setItem("selectedProfileName", name);
+
+      console.log("Checking admin status...");
+      console.log("Profile name is:", name); 
+
+      if (name.toLowerCase() === "admin") {
+        console.log("Admin detected! Trying to show elements.");
+        
+        const adminElements = document.querySelectorAll('.admin-only');
+        console.log("Found elements:", adminElements); 
+        
+        adminElements.forEach(el => {
+          el.style.display = 'list-item';
+        });
+      }
     }
 
     if (elements.avatar) {
@@ -128,9 +145,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (elements.logout) {
       elements.logout.addEventListener("click", (event) => {
         event.preventDefault();
-  localStorage.clear();
-  window.location.href = "/login";
-});
+        localStorage.clear();
+        window.location.href = "/login";
+      });
     }
   }
 
@@ -279,6 +296,37 @@ document.addEventListener("DOMContentLoaded", () => {
       ].join("\n");
       alert(info);
     };
+  }
+
+  function getCardWidthForStrip(strip, viewport) {
+    if (!strip) return viewport?.clientWidth || 0;
+    const firstCard = strip.querySelector(".media-card");
+    if (!firstCard) return viewport?.clientWidth || 0;
+    const style = window.getComputedStyle(firstCard);
+    const marginRight = parseFloat(style.marginRight || CARD_GAP);
+    const marginLeft = parseFloat(style.marginLeft || 0);
+    return firstCard.offsetWidth + marginLeft + marginRight;
+  }
+
+  function buildCircularMarkup(cards, options = {}) {
+    const markup = cards.map((card) => cardHTML(card, options));
+    if (markup.length === 0) {
+      return { markup: "", cloneCount: 0 };
+    }
+    const clones = Math.min(markup.length, 7);
+    const leadingClones = markup.slice(-clones);
+    const trailingClones = markup.slice(0, clones);
+    return {
+      markup: [...leadingClones, ...markup, ...trailingClones].join(""),
+      cloneCount: clones,
+    };
+  }
+
+  function shouldLoopSection(cards, options = {}) {
+    if (typeof options.forceLoop === "boolean") {
+      return options.forceLoop;
+    }
+    return Array.isArray(cards) && cards.length >= MIN_LOOP_ITEMS;
   }
 
   function renderSections() {
@@ -445,16 +493,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const strip = document.createElement("div");
     strip.className = "carousel-strip";
     
-    // Make all carousels circular and infinite
-    // Display each item only once (like Netflix original)
-    // We'll create circular scrolling by jumping to the beginning when reaching the end
-    if (cards.length > 0) {
-      // Display items only once - no duplication
-      strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
+    const enableLoop = shouldLoopSection(cards, options);
+    if (cards.length > 0 && enableLoop) {
+      const { markup, cloneCount } = buildCircularMarkup(cards, options);
+      strip.innerHTML = markup;
       strip.dataset.originalLength = cards.length;
+      strip.dataset.cloneCount = cloneCount;
       strip.dataset.isCircular = "true";
     } else {
       strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
+      strip.dataset.originalLength = cards.length;
+      strip.dataset.cloneCount = "0";
+      strip.dataset.isCircular = "false";
     }
 
     viewport.appendChild(strip);
@@ -464,14 +514,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     elements.sections.appendChild(sectionEl);
 
-    // For circular carousel, start at the beginning of the first section
-    // We'll handle wrapping seamlessly when reaching the end
     if (cards.length > 0 && strip.dataset.isCircular === "true") {
-      // Wait for layout to calculate, then start at the first section
-      // This ensures the user sees the content starting from the beginning
       setTimeout(() => {
-        viewport.scrollLeft = 0;
-      }, 50);
+        const firstCard = strip.querySelector(".media-card");
+        if (firstCard) {
+          const cardWidth = getCardWidthForStrip(strip, viewport);
+          const clones = parseInt(strip.dataset.cloneCount || "0", 10);
+          viewport.scrollLeft = cardWidth * clones;
+        } else {
+          viewport.scrollLeft = 0;
+        }
+      }, 60);
     }
 
     bindArrows(viewportId);
@@ -544,9 +597,9 @@ document.addEventListener("DOMContentLoaded", () => {
   return `
       <article class="media-card" data-id="${content.id}">
         ${flyout}
-        <img class="media-thumb" src="${poster}" alt="${escapeHtml(
+      <img class="media-thumb" src="${poster}" alt="${escapeHtml(
       content.title
-    )}" onerror="this.src='images/fallback.jpg'">
+    )}" onerror="this.onerror=null;this.src='/images/fallback.jpg';">
       <div class="media-body">
           <h3 class="media-title" title="${escapeHtml(
             content.title
@@ -556,6 +609,10 @@ document.addEventListener("DOMContentLoaded", () => {
             <span class="badge badge-cat rounded-pill px-2 py-1">${escapeHtml(
               content.category || "General"
             )}</span>
+          </div>
+          <div class="media-rating mt-1">
+              <i class="bi bi-star-fill"></i>
+              <span>${escapeHtml(content.rating || 'N/A')}</span>
           </div>
           <p class="media-meta mt-2" title="${escapeHtml(
             content.info || ""
@@ -1004,129 +1061,123 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function bindArrows(viewportId) {
-  const viewport = document.getElementById(viewportId);
+    const viewport = document.getElementById(viewportId);
     if (!viewport || viewport.dataset.bound === "1") return;
 
-  const section = viewport.parentElement;
-  const prev = section.querySelector(".arrow-btn.prev");
-  const next = section.querySelector(".arrow-btn.next");
-  const strip = viewport.querySelector(".carousel-strip");
-  const isCircular = strip?.dataset.isCircular === "true";
-  const originalLength = strip ? parseInt(strip.dataset.originalLength, 10) : 0;
-  let isWrapping = false;
-  let scrollTimeout = null;
+    const section = viewport.parentElement;
+    const prev = section.querySelector(".arrow-btn.prev");
+    const next = section.querySelector(".arrow-btn.next");
+    const strip = viewport.querySelector(".carousel-strip");
+    const isCircular = strip?.dataset.isCircular === "true";
+
+    const getOriginalLength = () =>
+      strip ? parseInt(strip.dataset.originalLength || "0", 10) : 0;
+    const getCloneCount = () =>
+      strip ? parseInt(strip.dataset.cloneCount || "0", 10) : 0;
+
+    const getCardWidth = () => getCardWidthForStrip(strip, viewport);
+
+    const jumpWithoutAnimation = (position) => {
+      const previousBehavior = viewport.style.scrollBehavior;
+      viewport.style.scrollBehavior = "auto";
+      viewport.scrollLeft = position;
+      viewport.style.scrollBehavior = previousBehavior || "";
+    };
+
+    const ensureCircularBounds = () => {
+      const originalLength = getOriginalLength();
+      const cloneCount = getCloneCount();
+      if (!isCircular || !originalLength || cloneCount === 0) return;
+      const cardWidth = getCardWidth();
+      const cloneWidth = cardWidth * cloneCount;
+      const contentWidth = cardWidth * originalLength;
+      const leftBoundary = cloneWidth;
+      const rightBoundary = cloneWidth + contentWidth;
+      const threshold = cardWidth / 2;
+
+      if (viewport.scrollLeft >= rightBoundary - threshold) {
+        jumpWithoutAnimation(viewport.scrollLeft - contentWidth);
+      } else if (viewport.scrollLeft <= leftBoundary - threshold) {
+        jumpWithoutAnimation(viewport.scrollLeft + contentWidth);
+      }
+    };
 
     const updateDisabled = () => {
-      if (isCircular && originalLength > 0) {
-        // For circular carousel, never disable arrows
-        if (prev) prev.disabled = false;
-        if (next) next.disabled = false;
-        
-        // Handle seamless circular scroll wrapping
-        // This creates the illusion of infinite scrolling like Netflix
-        // No duplication - each item appears only once
-        if (!isWrapping) {
-          // Calculate card width more accurately from the actual rendered cards
-          const firstCard = strip.querySelector('.media-card');
-          let cardWidth;
-          if (firstCard) {
-            cardWidth = firstCard.offsetWidth + 12; // card width + gap (12px from CSS)
-          } else {
-            // Fallback to viewport calculation
-            cardWidth = viewport.clientWidth / 7;
-          }
-          
-          const totalWidth = originalLength * cardWidth;
-          const scrollLeft = viewport.scrollLeft;
-          const scrollWidth = viewport.scrollWidth;
-          const clientWidth = viewport.clientWidth;
-          const maxScroll = scrollWidth - clientWidth;
-          
-          // Seamless wrap: if scrolled past the end, jump to beginning
-          // This creates the illusion of infinite scrolling - the beginning appears after the end
-          // Use a larger threshold for smoother wrapping (like Netflix)
-          const threshold = 100; // Larger threshold for smoother wrapping
-          if (maxScroll > 0 && scrollLeft >= maxScroll - threshold) {
-            isWrapping = true;
-            // Jump to the beginning (seamlessly, without animation)
-            viewport.style.scrollBehavior = 'auto';
-            const offset = Math.max(0, scrollLeft - maxScroll);
-            viewport.scrollLeft = offset;
-            // Re-enable smooth scrolling after a brief moment
-            setTimeout(() => {
-              viewport.style.scrollBehavior = 'smooth';
-              isWrapping = false;
-            }, 50);
-          }
-          // Seamless wrap: if scrolled before start, jump to end
-          // This creates the illusion of infinite scrolling - the end appears before the beginning
-          else if (scrollLeft <= threshold && maxScroll > 0) {
-            isWrapping = true;
-            // Jump to the end (seamlessly, without animation)
-            viewport.style.scrollBehavior = 'auto';
-            const offset = Math.max(0, scrollLeft);
-            viewport.scrollLeft = maxScroll - offset;
-            // Re-enable smooth scrolling after a brief moment
-            setTimeout(() => {
-              viewport.style.scrollBehavior = 'smooth';
-              isWrapping = false;
-            }, 50);
-          }
-        }
-      } else {
+      if (prev) prev.disabled = false;
+      if (next) next.disabled = false;
+      const hasScrollRoom = viewport.scrollWidth - viewport.clientWidth > 2;
+      const showArrows = isCircular ? hasScrollRoom : viewport.scrollWidth - viewport.clientWidth > 2;
+
+      if (prev) {
+        prev.style.visibility = showArrows ? "visible" : "hidden";
+      }
+      if (next) {
+        next.style.visibility = showArrows ? "visible" : "hidden";
+      }
+
+      if (!isCircular) {
         const maxScroll = viewport.scrollWidth - viewport.clientWidth;
         if (prev) prev.disabled = viewport.scrollLeft <= 1;
         if (next) next.disabled = viewport.scrollLeft >= maxScroll - 1;
       }
     };
 
-    // Calculate scroll amount - scroll by approximately 7 cards (one full viewport)
     const page = () => {
-      const firstCard = strip?.querySelector('.media-card');
-      if (firstCard) {
-        const cardWidth = firstCard.offsetWidth + 12; // card width + gap
-        return cardWidth * 7; // Scroll by 7 cards (one viewport)
-      }
-      return viewport.clientWidth;
+      const cardWidth = getCardWidth();
+      return cardWidth > 0 ? cardWidth * 7 : viewport.clientWidth;
     };
 
     if (prev) {
       prev.addEventListener("click", () => {
-        const scrollAmount = -page();
-        viewport.scrollBy({ 
-          left: scrollAmount, 
-          behavior: "smooth" 
+        viewport.scrollBy({
+          left: -page(),
+          behavior: "smooth",
         });
-        setTimeout(updateDisabled, 400);
+        setTimeout(() => {
+          ensureCircularBounds();
+          updateDisabled();
+        }, 350);
       });
     }
 
     if (next) {
       next.addEventListener("click", () => {
-        const scrollAmount = page();
-        viewport.scrollBy({ 
-          left: scrollAmount, 
-          behavior: "smooth" 
+        viewport.scrollBy({
+          left: page(),
+          behavior: "smooth",
         });
-        setTimeout(updateDisabled, 400);
+        setTimeout(() => {
+          ensureCircularBounds();
+          updateDisabled();
+        }, 350);
       });
     }
 
-  // Use requestAnimationFrame for smoother scroll handling
-  let rafId = null;
-  viewport.addEventListener("scroll", () => {
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(() => {
-      updateDisabled();
-    });
-  }, { passive: true });
-  
+    let rafId = null;
+    viewport.addEventListener(
+      "scroll",
+      () => {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+          ensureCircularBounds();
+          updateDisabled();
+        });
+      },
+      { passive: true }
+    );
+
     if (window.ResizeObserver) {
-      new ResizeObserver(updateDisabled).observe(viewport);
+      const observer = new ResizeObserver(() => {
+        ensureCircularBounds();
+        updateDisabled();
+      });
+      observer.observe(viewport);
     }
-  viewport.dataset.bound = "1";
-  updateDisabled();
-}
+
+    viewport.dataset.bound = "1";
+    ensureCircularBounds();
+    updateDisabled();
+  }
 
   function setupInfiniteScroll(viewportId, genre) {
     const viewport = document.getElementById(viewportId);
@@ -1247,16 +1298,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (viewport) {
         const strip = viewport.querySelector(".carousel-strip");
         if (strip && strip.dataset.isCircular === "true") {
-          const originalLength = parseInt(strip.dataset.originalLength, 10);
-          const currentScroll = viewport.scrollLeft;
-          const cardWidth = viewport.clientWidth / 7;
-          const originalWidth = originalLength * cardWidth;
-          
-          // Get all current items from the genre section
           const genreKey = genre;
           const allItems = state.sections.newestByGenre[genreKey] || [];
-          
-          // Rebuild the carousel with all items (including new ones)
           const allCards = allItems.map((item) => {
             const merged = mergeContent(item);
             return {
@@ -1265,34 +1308,49 @@ document.addEventListener("DOMContentLoaded", () => {
               progress: null,
             };
           });
-          
-          // Create circular carousel with all items (no duplication - each item appears once)
-          strip.innerHTML = allCards.map((card) => cardHTML(card, { allowSort: false })).join("");
+
+          const currentScroll = viewport.scrollLeft;
+          const previousCloneCount = parseInt(strip.dataset.cloneCount || "0", 10);
+          const previousCardWidth = getCardWidthForStrip(strip, viewport);
+          const previousCloneWidth = previousCardWidth * previousCloneCount;
+          const relativePosition = Math.max(currentScroll - previousCloneWidth, 0);
+
+          const enableLoop = shouldLoopSection(allCards, { allowSort: false });
+          if (enableLoop) {
+            const { markup, cloneCount } = buildCircularMarkup(allCards, { allowSort: false });
+            strip.innerHTML = markup;
+            strip.dataset.cloneCount = cloneCount.toString();
+            strip.dataset.isCircular = "true";
+          } else {
+            strip.innerHTML = allCards
+              .map((card) =>
+                cardHTML(card, {
+                  allowSort: false,
+                })
+              )
+              .join("");
+            strip.dataset.cloneCount = "0";
+            strip.dataset.isCircular = "false";
+          }
           strip.dataset.originalLength = allCards.length.toString();
 
-          // Adjust scroll position to maintain user's view
-          // Since we don't duplicate items, we just maintain the scroll position
-          // Calculate new card width after adding new items
-          const firstCard = strip.querySelector('.media-card');
-          let newCardWidth;
-          if (firstCard) {
-            newCardWidth = firstCard.offsetWidth + 12; // card width + gap
-          } else {
-            newCardWidth = viewport.clientWidth / 7;
-          }
-          
-          // Maintain the same scroll position (relative to the beginning)
-          // The new items will be added at the end, so the user's view stays the same
-          const newScrollWidth = allCards.length * newCardWidth;
-          const newMaxScroll = newScrollWidth - viewport.clientWidth;
-          viewport.scrollLeft = Math.min(currentScroll, newMaxScroll);
-          
-          // Re-bind arrows after DOM update
-          setTimeout(() => {
-            bindArrows(viewportId);
-          }, 50);
-        } else {
-          // Non-circular carousel, just append
+          const newCardWidth = getCardWidthForStrip(strip, viewport);
+          const contentWidth = newCardWidth * allItems.length;
+          const maxRelative = Math.max(contentWidth - viewport.clientWidth, 0);
+          const clampedRelative = Math.min(relativePosition, maxRelative);
+          const cloneCount = parseInt(strip.dataset.cloneCount || "0", 10);
+          const targetScroll = enableLoop
+            ? newCardWidth * cloneCount + clampedRelative
+            : clampedRelative;
+
+          const previousBehavior = viewport.style.scrollBehavior;
+          viewport.style.scrollBehavior = "auto";
+          viewport.scrollLeft = targetScroll;
+          viewport.style.scrollBehavior = previousBehavior || "";
+
+          // Trigger a scroll update to refresh arrow state
+          viewport.dispatchEvent(new Event("scroll"));
+        } else if (strip) {
           const cards = newItems.map((item) => {
             const merged = mergeContent(item);
             return cardHTML(
@@ -1494,6 +1552,10 @@ document.addEventListener("DOMContentLoaded", () => {
           <div class="content-detail-item">
             <span class="content-detail-label">Category:</span>
             <span class="content-detail-value">${escapeHtml(content.category || "")}</span>
+          </div>
+          <div class="content-detail-item">
+            <span class="content-detail-label">Rating:</span>
+            <span class="content-detail-value">${escapeHtml(content.rating || 'N/A')}</span>
           </div>
           <div class="content-detail-item">
             <span class="content-detail-label">Info:</span>

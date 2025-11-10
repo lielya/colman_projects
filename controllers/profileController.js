@@ -13,6 +13,7 @@ const ensureAssetPath = (value) => {
   return `/${value.replace(/^\.?\//, "")}`;
 };
 
+// --- 👇 התיקון נמצא כאן 👇 ---
 const mapContent = (doc, likeMap = null) => {
   if (!doc) return null;
   const docId = doc._id?.toString?.() || doc.id;
@@ -35,6 +36,7 @@ const mapContent = (doc, likeMap = null) => {
     backdrop: ensureAssetPath(doc.backdrop),
     info: doc.info,
     likes: totalLikes,
+    rating: doc.rating || 'N/A', // <-- הוספנו את השורה הזו
     score: doc.score || 0,
     totalLikes,
     completions: doc.completions || 0,
@@ -43,6 +45,7 @@ const mapContent = (doc, likeMap = null) => {
     updatedAt: doc.updatedAt,
   };
 };
+// --- 👆 סוף התיקון 👆 ---
 
 const toObjectId = (value) => {
   if (!value) return null;
@@ -72,6 +75,10 @@ const buildGlobalLikeMap = async (contentIds = []) => {
   if (ids.length > 0) {
     match.contentId = { $in: ids };
   } else {
+    // אם אין IDs ספציפיים, אולי כדאי לא להמשיך? או לשלוף הכל?
+    // כרגע, אם contentIds ריק, ids יהיה ריק, ו-match.contentId לא יוגדר
+    // מה שיגרום לאגריגציה לרוץ על *כל* הלייקים. זה אולי לא רצוי.
+    // נוסיף בדיקה - אם אין IDs, נחזיר מפה ריקה.
     return new Map();
   }
 
@@ -221,11 +228,14 @@ const buildNewestByGenre = async (limitPerGenre = null) => {
 
 const mapProgressEntry = (item, likeMap = null) => {
   if (!item || !item.contentId) return null;
+  // contentId עשוי להיות אובייקט מלא או רק ID, נטפל בשני המקרים
+  const contentDoc = item.contentId.title ? item.contentId : { _id: item.contentId };
+  
   const resumePositionSec = Math.max(0, (item.lastPositionSec || 0) - 10);
 
   return {
     id: item._id.toString(),
-    content: mapContent(item.contentId, likeMap),
+    content: mapContent(contentDoc, likeMap), // נשתמש ב-mapContent כדי לקבל פורמט אחיד
     episode: item.episodeId
       ? {
           id: item.episodeId._id.toString(),
@@ -244,19 +254,34 @@ const mapProgressEntry = (item, likeMap = null) => {
 };
 
 const buildContinueWatching = async (profileId, limit = 12) => {
-  const items = await Progress.find({
+  const rawItems = await Progress.find({
     profileId,
-    watchPercentage: { $lt: 95 },
+    status: { $ne: "done" },
+    watchPercentage: { $gt: 0, $lt: 95 },
   })
     .sort({ updatedAt: -1 })
     .limit(limit)
     .populate([
-      { path: "contentId" },
+      { path: "contentId" }, // <-- populate ישלוף את כל מסמך התוכן
       { path: "episodeId", select: "title season episode" },
     ])
     .lean();
 
-  const contentIds = items
+  // Ensure uniqueness per content (latest progress first due to sorting)
+  const uniqueItems = [];
+  const seenContent = new Set();
+  for (const item of rawItems) {
+    const contentId =
+      item?.contentId?._id?.toString?.() || item?.contentId?.toString?.();
+    if (!contentId || seenContent.has(contentId)) {
+      continue;
+    }
+    seenContent.add(contentId);
+    uniqueItems.push(item);
+    if (uniqueItems.length >= limit) break;
+  }
+
+  const contentIds = uniqueItems
     .map((item) =>
       item?.contentId?._id?.toString?.() || item?.contentId?.toString?.()
     )
@@ -264,7 +289,9 @@ const buildContinueWatching = async (profileId, limit = 12) => {
 
   const likeMap = await buildGlobalLikeMap(contentIds);
 
-  return items.map((item) => mapProgressEntry(item, likeMap)).filter(Boolean);
+  return uniqueItems
+    .map((item) => mapProgressEntry(item, likeMap))
+    .filter(Boolean);
 };
 
 const buildRecommendations = async (profileId, options = {}) => {
@@ -346,6 +373,8 @@ const ensureProfileExists = async (profileId) => {
   return profile;
 };
 
+// ... (כל שאר הפונקציות כמו getProfiles, createProfile וכו' נשארות זהות) ...
+// (קוצר כאן כדי לחסוך מקום)
 // get all profiles
 exports.getProfiles = async (req, res) => {
   try {

@@ -59,6 +59,7 @@ exports.searchContent = async (req, res) => {
       backdrop: doc.backdrop,
       info: doc.info,
       likes: doc.likes || 0,
+      rating: doc.rating || 'N/A',
       score:
         typeof doc.score === "number"
           ? doc.score
@@ -115,6 +116,7 @@ exports.getContentById = async (req, res) => {
       info: content.info,
       likes: content.likes || 0,
       actors: content.actors || [],
+      rating: content.rating || 'N/A',
       createdAt: content.createdAt,
       updatedAt: content.updatedAt,
     });
@@ -233,6 +235,7 @@ exports.getContentByGenre = async (req, res) => {
       backdrop: doc.backdrop,
       info: doc.info,
       likes: doc.likes || 0,
+      rating: doc.rating || 'N/A',
       score: doc.score || (doc.likes || 0) + (doc.completions || 0),
       completions: doc.completions || 0,
       actors: doc.actors || [],

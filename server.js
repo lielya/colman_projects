@@ -1,7 +1,10 @@
+// server.js
+
 const express = require("express");
 const mongoose = require("mongoose");
 const path = require("path");
 const dotenv = require("dotenv");
+const session = require("express-session"); // <-- REQUIRED for login
 const seedDatabase = require("./seedDatabase");
 const app = express();
 
@@ -18,34 +21,62 @@ async function startServer() {
     await seedDatabase();
     console.log("✅ Seeding completed!");
 
-    // Middleware
+    // --- Middleware ---
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
-    // Request logging middleware
+    // --- Session Middleware (CRITICAL FOR LOGIN) ---
+    // Make sure you ran: npm install express-session
+    app.use(session({
+      secret: process.env.SESSION_SECRET || 'your_secret_key_goes_here',
+      resave: false,
+      saveUninitialized: true,
+      cookie: { secure: false } // Set to true if using HTTPS
+    }));
+
+    // Request logging middleware (skip static asset noise)
+    const logIgnorePatterns = [
+      /^\/images\//,
+      /^\/uploads\//,
+      /^\/videos\//,
+      /^\/favicon\.ico$/,
+      /^\/.*\.js$/,
+      /^\/.*\.css$/
+    ];
     app.use((req, res, next) => {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] ${req.method} ${req.url}`);
+      const shouldIgnore = logIgnorePatterns.some((pattern) =>
+        pattern.test(req.path || "")
+      );
+      if (!shouldIgnore) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] ${req.method} ${req.url}`);
+      }
       next();
     });
 
     // Serve static files
     app.use(express.static(path.join(__dirname, "public")));
 
-    // Import route modules
+    // --- Import Route Modules ---
     const authRoutes = require("./routes/authRoutes");
     const profileRoutes = require("./routes/profileRoutes");
     const contentRoutes = require("./routes/contentRoutes");
+    const adminRoutes = require("./routes/adminRoutes"); // <-- UPDATED with camelCase
+
+    // --- Mount Routes ---
 
     // Mount routes - Views routes (no /api prefix)
-    app.use("/", authRoutes); // Auth views: /login, /register
+    app.use("/", authRoutes); // Auth views: / (login), /login, /register
     app.use("/", profileRoutes); // Profile views: /profiles
-    app.use("/", contentRoutes); // Content views: / (main page)
+    app.use("/", contentRoutes); // Content views: /main (main page after login)
 
     // Mount API routes (with /api prefix)
     app.use("/api", authRoutes); // Auth API: /api/login, /api/register
     app.use("/api", profileRoutes); // Profile API: /api/users/:userId/profiles, etc.
     app.use("/api", contentRoutes); // Content API: /api/content, etc.
+
+    // Mount Admin routes (handles /admin/...)
+    app.use("/admin", adminRoutes); // <-- NEWLY ADDED
 
     // 404 handler for API routes only
     app.use("/api/*", (req, res) => {

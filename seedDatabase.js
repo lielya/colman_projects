@@ -1,5 +1,6 @@
 //loading mongoose and models
 const mongoose = require('mongoose');
+const fetch = require('node-fetch'); // Make sure you've installed node-fetch@2
 
 const Content = require('./models/Content');
 const Profile = require('./models/Profile');
@@ -9,13 +10,7 @@ const Like = require('./models/Like');
 const Progress = require('./models/Progress');
 const WatchEvent = require('./models/WatchEvent');
 
-// Connect to MongoDB
-// mongoose.connect('mongodb://localhost:27017/netflixDB')
-//   .then(() => console.log('Connected to MongoDB'))
-//   .catch(err => console.error('MongoDB connection error:', err));
-
-
-// Actors data for each content (defined outside function so it's accessible)
+// ... (actorsData ... remains the same, shortened here to save space)
 const actorsData = {
   "Breaking Bad": [
     { name: "Bryan Cranston", wikipediaUrl: "https://en.wikipedia.org/wiki/Bryan_Cranston" },
@@ -219,9 +214,72 @@ const actorsData = {
   ]
 };
 
+/**
+ * Fetches a rating for a given title from the OMDb API.
+ * @param {string} title The title of the movie or series.
+ * @returns {Promise<string>} The rating (e.g., "9.0" or "8.6") or "N/A".
+ */
+async function getRatingForTitle(title) {
+  try {
+    const apiKey = process.env.OMDB_API_KEY || 'd11be0e4'; // ⚠️ Make sure your API key is set here
+    
+    if (apiKey === 'YOUR_OMDB_API_KEY_HERE') {
+      console.warn(`[Seeder] OMDb API key not set. Skipping rating for "${title}".`);
+      return 'N/A';
+    }
+
+    const omdbUrl = `http://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${apiKey}`;
+    const omdbResponse = await fetch(omdbUrl);
+    const movieData = await omdbResponse.json();
+
+    if (movieData.Response === 'False') {
+      console.warn(`[Seeder] OMDb API error for "${title}": ${movieData.Error}`);
+      return 'N/A';
+    }
+
+  // --- 👇 New logic with conversion (IMDb first) 👇 ---
+    let finalRating = 'N/A';
+    
+  // 1. Try to find an IMDb rating
+    if (movieData.imdbRating && movieData.imdbRating !== 'N/A') {
+      finalRating = movieData.imdbRating; // ⬅️ Prefer IMDb
+    } 
+  // 2. If not, try to find Rotten Tomatoes and convert it
+    else if (movieData.Ratings && Array.isArray(movieData.Ratings)) {
+      const rtRating = movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes');
+      
+      if (rtRating && rtRating.Value.includes('%')) {
+        // Conversion: "94%" -> 9.4
+        const percentString = rtRating.Value.replace('%', '');
+        const percentNumber = parseFloat(percentString);
+        if (!isNaN(percentNumber)) {
+          finalRating = (percentNumber / 10.0).toFixed(1); 
+        }
+      }
+  // 3. Fallback: Metacritic
+      else if (finalRating === 'N/A') {
+        const mcRating = movieData.Ratings.find(r => r.Source === 'Metacritic');
+        if (mcRating && mcRating.Value.includes('/100')) {
+           const mcString = mcRating.Value.replace('/100', '');
+           const mcNumber = parseFloat(mcString);
+           if (!isNaN(mcNumber)) {
+              finalRating = (mcNumber / 10.0).toFixed(1); 
+           }
+        }
+      }
+    }
+  // --- 👆 End of the new logic 👆 ---
+    
+    return finalRating;
+  } catch (error) {
+    console.error(`[Seeder] Failed to fetch rating for "${title}":`, error.message);
+    return 'N/A';
+  }
+}
+
 // Seed function
 async function seedDatabase() {
-  try {
+try {
     // Check if database already has data
     const existingUsers = await User.countDocuments({});
     const existingContent = await Content.countDocuments({});
@@ -238,24 +296,51 @@ async function seedDatabase() {
       profiles = await Profile.find({}).sort({ _id: 1 });
       content = await Content.find({}).sort({ _id: 1 });
       
-      // Update all existing content with actors if they don't have any
+      
+      // Update all existing content with actors AND ratings if they don't have any
+      console.log('[Seeder] Checking existing content for missing actors and ratings...');
       let updatedCount = 0;
+      let ratingUpdatedCount = 0;
       for (const contentItem of content) {
+        let needsSave = false;
+
+        // Check for missing actors
         if (!contentItem.actors || contentItem.actors.length === 0) {
           if (actorsData[contentItem.title]) {
             contentItem.actors = actorsData[contentItem.title];
-            await contentItem.save();
-            updatedCount++;
             console.log(`Updated ${contentItem.title} with ${contentItem.actors.length} actors`);
+            updatedCount++;
+            needsSave = true;
           }
+        }
+        
+  // --- 👇 The critical fix is here 👇 ---
+  // Force update if rating is missing, 'N/A', or still contains a percent sign
+        const needsRatingUpdate = !contentItem.rating || 
+                                contentItem.rating === 'N/A' || 
+                                contentItem.rating.includes('%');
+
+        if (needsRatingUpdate) {
+  // --- 👆 End of the fix 👆 ---
+          console.log(`[Seeder] Fetching/Updating rating for: ${contentItem.title}`);
+          contentItem.rating = await getRatingForTitle(contentItem.title);
+          ratingUpdatedCount++;
+          needsSave = true;
+        }
+
+        if (needsSave) {
+          await contentItem.save();
         }
       }
       
       if (updatedCount > 0) {
         console.log(`Updated ${updatedCount} content items with actors.`);
       }
+      if (ratingUpdatedCount > 0) {
+        console.log(`Updated ${ratingUpdatedCount} content items with new ratings.`);
+      }
       
-      // Check if we have the minimum required data
+  // ( ... rest of the code ... remains unchanged )
       if (users.length < 4) {
         console.log('Not enough users found. Creating users...');
         const usersToCreate = [];
@@ -305,14 +390,14 @@ async function seedDatabase() {
     } else {
       // Only clear and seed if database is empty
       console.log('Database is empty. Starting seed process...');
-      await User.deleteMany({});
-      await Profile.deleteMany({});
-      await Content.deleteMany({});
-      await Episode.deleteMany({});
-      await Like.deleteMany({});
-      await Progress.deleteMany({});
-      await WatchEvent.deleteMany({});
-      console.log('Cleared existing data');
+    await User.deleteMany({});
+    await Profile.deleteMany({});
+    await Content.deleteMany({});
+    await Episode.deleteMany({});
+    await Like.deleteMany({});
+    await Progress.deleteMany({});
+    await WatchEvent.deleteMany({});
+    console.log('Cleared existing data');
       isNewDatabase = true;
     }
 
@@ -340,80 +425,49 @@ async function seedDatabase() {
         username: "admin",
         password: "123456"
     }
-      ]);
-      console.log('Created users');
+    ]);
+    console.log('Created users');
     }
 
     //******Profiles Sample Data*****//
     if (isNewDatabase) {
       profiles = await Profile.create([{
-        userId: users[0]._id,
-        name: "Liel",
-        avatar: "https://i.pinimg.com/564x/b2/a0/29/b2a029a6c2757e9d3a09265e3d07d49d.jpg"
-      },
-      {
-        userId: users[1]._id,
-        name: "Lihi",
-        avatar: "https://i.pinimg.com/564x/a4/c6/5f/a4c65f709d4c0cb1b4329c12beb9cd78.jpg"
-      },
-      {
-        userId: users[2]._id,
-        name: "Amit",
-        avatar: "https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg"
-      },
-      {
-        userId: users[3]._id,
-        name: "Admin",
-        avatar: "https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg"
-      }
-      ]);
-      console.log('Created profiles');
+    userId: users[0]._id,
+    name: "Liel",
+    avatar: "https://i.pinimg.com/564x/b2/a0/29/b2a029a6c2757e9d3a09265e3d07d49d.jpg"
+  },
+  {
+    userId: users[1]._id,
+    name: "Lihi",
+    avatar: "https://i.pinimg.com/564x/a4/c6/5f/a4c65f709d4c0cb1b4329c12beb9cd78.jpg"
+  },
+  {
+    userId: users[2]._id,
+    name: "Amit",
+    avatar: "https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg"
+  },
+  {
+    userId: users[3]._id,
+    name: "Admin",
+    avatar: "https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg"
+  }
+    ]);
+    console.log('Created profiles');
     }
 
-    //******Content Sample Data*****//
+  // ( ... baselineLikes remains the same ... )
     const baselineLikes = {
-      "Breaking Bad": 420,
-      "Lost": 180,
-      "Game of Thrones": 390,
-      "Ozark": 140,
-      "Squid Game": 260,
-      "The Last Dance": 120,
-      "Stranger Things": 350,
-      "Chernobyl": 210,
-      "The Crown": 160,
-      "Narcos": 190,
-      "The Witcher": 175,
-      "Peaky Blinders": 150,
-      "Money Heist": 230,
-      "Black Mirror": 200,
-      "Better Call Saul": 185,
-      "The Boys": 240,
-      "The Mandalorian": 260,
-      "True Detective": 170,
-      "Fargo": 125,
-      "House of the Dragon": 280,
-      "The Shawshank Redemption": 410,
-      "The Lion King": 300,
-      "The Green Mile": 250,
-      "Titanic": 360,
-      "Inception": 380,
-      "Interstellar": 420,
-      "Gladiator": 220,
-      "Forrest Gump": 340,
-      "The Dark Knight": 430,
-      "Pulp Fiction": 390,
-      "Spirited Away": 280,
-      "Whiplash": 210,
-      "Parasite": 260,
-      "Mad Max: Fury Road": 200,
-      "La La Land": 170,
-      "Coco": 290,
-      "Dune": 310,
-      "Arrival": 185,
-      "Inside Out": 275,
-      "The Social Network": 195,
+      "Breaking Bad": 420, "Lost": 180, "Game of Thrones": 390, "Ozark": 140, "Squid Game": 260,
+      "The Last Dance": 120, "Stranger Things": 350, "Chernobyl": 210, "The Crown": 160, "Narcos": 190,
+      "The Witcher": 175, "Peaky Blinders": 150, "Money Heist": 230, "Black Mirror": 200, "Better Call Saul": 185,
+      "The Boys": 240, "The Mandalorian": 260, "True Detective": 170, "Fargo": 125, "House of the Dragon": 280,
+      "The Shawshank Redemption": 410, "The Lion King": 300, "The Green Mile": 250, "Titanic": 360, "Inception": 380,
+      "Interstellar": 420, "Gladiator": 220, "Forrest Gump": 340, "The Dark Knight": 430, "Pulp Fiction": 390,
+      "Spirited Away": 280, "Whiplash": 210, "Parasite": 260, "Mad Max: Fury Road": 200, "La La Land": 170,
+      "Coco": 290, "Dune": 310, "Arrival": 185, "Inside Out": 275, "The Social Network": 195,
     };
-
+    
+  // ( ... contentData remains the same, shortened here ... )
     const contentData = [
   //series
   {
@@ -660,43 +714,54 @@ async function seedDatabase() {
     ];
 
     const randomLikeDocs = [];
-    contentData.forEach((item) => {
+    
+    
+    console.log('[Seeder] Fetching ratings for new content... (This may take a moment)');
+    for (const item of contentData) {
       const baseline =
         baselineLikes[item.title] ??
         Math.floor(Math.random() * 150) + 40;
       item.likes = baseline;
       
-      // Add actors if available
       if (actorsData[item.title]) {
         item.actors = actorsData[item.title];
       } else {
         item.actors = [];
       }
-    });
+      
+  // We fetch the rating here so it will be available for newly created content
+  item.rating = await getRatingForTitle(item.title);
+    }
+    console.log('[Seeder] Rating fetching complete.');
+
 
     if (isNewDatabase) {
       content = await Content.create(contentData);
-      console.log('Created content');
+    console.log('Created content');
     } else {
       // Check if we need to create any missing content
       const existingTitles = new Set(content.map(c => c.title));
+      
       const contentToCreate = contentData.filter(item => !existingTitles.has(item.title));
       if (contentToCreate.length > 0) {
+        // The ratings are already present in contentToCreate from the previous loop
         const newContent = await Content.create(contentToCreate);
         console.log(`Created ${newContent.length} missing content items`);
         content = await Content.find({}).sort({ _id: 1 });
       }
     }
 
+  // ( ... all the rest of the code for episodes, progress, likes, etc. remains the same ... )
+  // ... (shortened here to save space) ...
     // //******Episodes Sample Data*******//
-    // ****** Episodes Sample Data *******
-    const episodesToInsert = [];
+// ****** Episodes Sample Data *******
+const episodesToInsert = [];
 
-    const theBoys = content.find(c => c.title === 'The Boys');
-    const mandalorian = content.find(c => c.title === 'The Mandalorian');
-    const trueDetective = content.find(c => c.title === 'True Detective');
-    const fargo = content.find(c => c.title === 'Fargo');
-    const houseOfDragon = content.find(c => c.title === 'House of the Dragon');
+const theBoys = content.find(c => c.title === 'The Boys');
+const mandalorian = content.find(c => c.title === 'The Mandalorian');
+const trueDetective = content.find(c => c.title === 'True Detective');
+const fargo = content.find(c => c.title === 'Fargo');
+const houseOfDragon = content.find(c => c.title === 'House of the Dragon');
     
     // Delete existing episodes for seed series to recreate them
     if (!isNewDatabase && (theBoys || mandalorian || trueDetective || fargo || houseOfDragon)) {
@@ -709,195 +774,195 @@ async function seedDatabase() {
       }
     }
 
-    if (theBoys) {
-      episodesToInsert.push(
-        {
-          seriesId: theBoys._id,
-          season: 1,
-          episode: 1,
-          title: 'The Name of the Game',
-          description: 'A group of vigilantes sets out to take down corrupt superheroes known as The Seven.',
-          durationSec: 3300,
-          videoUrl: '../public/videos/series/the-boys-trailer.mp4',
-          thumbnailUrl: '../public/images/series/the-boys.jpg',
-          airDate: new Date('2019-07-26')
-        },
-        {
-          seriesId: theBoys._id,
-          season: 1,
-          episode: 2,
-          title: 'Cherry',
-          description: 'Hughie and Starlight discover the dark side of Vought International.',
-          durationSec: 3250,
-          videoUrl: '../public/videos/series/the-boys-trailer.mp4',
-          thumbnailUrl: '../public/images/series/the-boys.jpg',
-          airDate: new Date('2019-07-26')
-        },
-        {
-          seriesId: theBoys._id,
-          season: 1,
-          episode: 3,
-          title: 'Get Some',
+if (theBoys) {
+  episodesToInsert.push(
+    {
+      seriesId: theBoys._id,
+      season: 1,
+      episode: 1,
+      title: 'The Name of the Game',
+      description: 'A group of vigilantes sets out to take down corrupt superheroes known as The Seven.',
+      durationSec: 3300,
+      videoUrl: '../public/videos/series/the-boys-trailer.mp4',
+      thumbnailUrl: '../public/images/series/the-boys.jpg',
+      airDate: new Date('2019-07-26')
+    },
+    {
+      seriesId: theBoys._id,
+      season: 1,
+      episode: 2,
+      title: 'Cherry',
+      description: 'Hughie and Starlight discover the dark side of Vought International.',
+      durationSec: 3250,
+      videoUrl: '../public/videos/series/the-boys-trailer.mp4',
+      thumbnailUrl: '../public/images/series/the-boys.jpg',
+      airDate: new Date('2019-07-26')
+    },
+    {
+      seriesId: theBoys._id,
+      season: 1,
+      episode: 3,
+      title: 'Get Some',
           description: 'The Boys devise a plan to expose A-Train\'s corruption.',
-          durationSec: 3280,
-          videoUrl: '../public/videos/series/the-boys-trailer.mp4',
-          thumbnailUrl: '../public/images/series/the-boys.jpg',
-          airDate: new Date('2019-07-26')
-        }
-      );
+      durationSec: 3280,
+      videoUrl: '../public/videos/series/the-boys-trailer.mp4',
+      thumbnailUrl: '../public/images/series/the-boys.jpg',
+      airDate: new Date('2019-07-26')
     }
+  );
+}
 
-    if (mandalorian) {
-      episodesToInsert.push(
-        {
-          seriesId: mandalorian._id,
-          season: 1,
-          episode: 1,
-          title: 'Chapter 1: The Mandalorian',
-          description: 'A lone bounty hunter tracks a valuable target in the outer reaches of the galaxy.',
-          durationSec: 3100,
-          videoUrl: '../public/videos/series/the-mandalorian-trailer.mp4',
-          thumbnailUrl: '../public/images/series/the-mandalorian.jpg',
-          airDate: new Date('2019-11-12')
-        },
-        {
-          seriesId: mandalorian._id,
-          season: 1,
-          episode: 2,
-          title: 'Chapter 2: The Child',
-          description: 'The Mandalorian fights off scavengers while protecting his mysterious new asset.',
-          durationSec: 3120,
-          videoUrl: '../public/videos/series/the-mandalorian-trailer.mp4',
-          thumbnailUrl: '../public/images/series/the-mandalorian.jpg',
-          airDate: new Date('2019-11-15')
-        },
-        {
-          seriesId: mandalorian._id,
-          season: 1,
-          episode: 3,
-          title: 'Chapter 3: The Sin',
-          description: 'The bounty hunter faces a tough choice after delivering the child to the Client.',
-          durationSec: 3150,
-          videoUrl: '../public/videos/series/the-mandalorian-trailer.mp4',
-          thumbnailUrl: '../public/images/series/the-mandalorian.jpg',
-          airDate: new Date('2019-11-22')
-        }
-      );
+if (mandalorian) {
+  episodesToInsert.push(
+    {
+      seriesId: mandalorian._id,
+      season: 1,
+      episode: 1,
+      title: 'Chapter 1: The Mandalorian',
+      description: 'A lone bounty hunter tracks a valuable target in the outer reaches of the galaxy.',
+      durationSec: 3100,
+      videoUrl: '../public/videos/series/the-mandalorian-trailer.mp4',
+      thumbnailUrl: '../public/images/series/the-mandalorian.jpg',
+      airDate: new Date('2019-11-12')
+    },
+    {
+      seriesId: mandalorian._id,
+      season: 1,
+      episode: 2,
+      title: 'Chapter 2: The Child',
+      description: 'The Mandalorian fights off scavengers while protecting his mysterious new asset.',
+      durationSec: 3120,
+      videoUrl: '../public/videos/series/the-mandalorian-trailer.mp4',
+      thumbnailUrl: '../public/images/series/the-mandalorian.jpg',
+      airDate: new Date('2019-11-15')
+    },
+    {
+      seriesId: mandalorian._id,
+      season: 1,
+      episode: 3,
+      title: 'Chapter 3: The Sin',
+      description: 'The bounty hunter faces a tough choice after delivering the child to the Client.',
+      durationSec: 3150,
+      videoUrl: '../public/videos/series/the-mandalorian-trailer.mp4',
+      thumbnailUrl: '../public/images/series/the-mandalorian.jpg',
+      airDate: new Date('2019-11-22')
     }
+  );
+}
 
-    if (trueDetective) {
-      episodesToInsert.push(
-        {
-          seriesId: trueDetective._id,
-          season: 1,
-          episode: 1,
-          title: 'The Long Bright Dark',
-          description: 'Detectives Rust Cohle and Marty Hart investigate a ritualistic murder in Louisiana.',
-          durationSec: 3600,
-          videoUrl: '../public/videos/series/true-detective-trailer.mp4',
-          thumbnailUrl: '../public/images/series/true-detective.jpg',
-          airDate: new Date('2014-01-12')
-        },
-        {
-          seriesId: trueDetective._id,
-          season: 1,
-          episode: 2,
-          title: 'Seeing Things',
-          description: 'The detectives pursue leads and confront their personal demons.',
-          durationSec: 3550,
-          videoUrl: '../public/videos/series/true-detective-trailer.mp4',
-          thumbnailUrl: '../public/images/series/true-detective.jpg',
-          airDate: new Date('2014-01-19')
-        },
-        {
-          seriesId: trueDetective._id,
-          season: 1,
-          episode: 3,
-          title: 'The Locked Room',
-          description: 'The case takes darker turns as new evidence surfaces.',
-          durationSec: 3580,
-          videoUrl: '../public/videos/series/true-detective-trailer.mp4',
-          thumbnailUrl: '../public/images/series/true-detective.jpg',
-          airDate: new Date('2014-01-26')
-        }
-      );
+if (trueDetective) {
+  episodesToInsert.push(
+    {
+      seriesId: trueDetective._id,
+      season: 1,
+      episode: 1,
+      title: 'The Long Bright Dark',
+      description: 'Detectives Rust Cohle and Marty Hart investigate a ritualistic murder in Louisiana.',
+      durationSec: 3600,
+      videoUrl: '../public/videos/series/true-detective-trailer.mp4',
+      thumbnailUrl: '../public/images/series/true-detective.jpg',
+      airDate: new Date('2014-01-12')
+    },
+    {
+      seriesId: trueDetective._id,
+      season: 1,
+      episode: 2,
+      title: 'Seeing Things',
+      description: 'The detectives pursue leads and confront their personal demons.',
+      durationSec: 3550,
+      videoUrl: '../public/videos/series/true-detective-trailer.mp4',
+      thumbnailUrl: '../public/images/series/true-detective.jpg',
+      airDate: new Date('2014-01-19')
+    },
+    {
+      seriesId: trueDetective._id,
+      season: 1,
+      episode: 3,
+      title: 'The Locked Room',
+      description: 'The case takes darker turns as new evidence surfaces.',
+      durationSec: 3580,
+      videoUrl: '../public/videos/series/true-detective-trailer.mp4',
+      thumbnailUrl: '../public/images/series/true-detective.jpg',
+      airDate: new Date('2014-01-26')
     }
+  );
+}
 
-    if (fargo) {
-      episodesToInsert.push(
-        {
-          seriesId: fargo._id,
-          season: 1,
-          episode: 1,
+if (fargo) {
+  episodesToInsert.push(
+    {
+      seriesId: fargo._id,
+      season: 1,
+      episode: 1,
           title: 'The Crocodile\'s Dilemma',
-          description: 'A drifter named Lorne Malvo brings chaos to the small town of Bemidji, Minnesota.',
-          durationSec: 3400,
-          videoUrl: '../public/videos/series/fargo-trailer.mp4',
-          thumbnailUrl: '../public/images/series/fargo.jpg',
-          airDate: new Date('2014-04-15')
-        },
-        {
-          seriesId: fargo._id,
-          season: 1,
-          episode: 2,
-          title: 'The Rooster Prince',
+      description: 'A drifter named Lorne Malvo brings chaos to the small town of Bemidji, Minnesota.',
+      durationSec: 3400,
+      videoUrl: '../public/videos/series/fargo-trailer.mp4',
+      thumbnailUrl: '../public/images/series/fargo.jpg',
+      airDate: new Date('2014-04-15')
+    },
+    {
+      seriesId: fargo._id,
+      season: 1,
+      episode: 2,
+      title: 'The Rooster Prince',
           description: 'Two enforcers investigate Malvo\'s crimes while Lester Nygaard struggles with guilt.',
-          durationSec: 3420,
-          videoUrl: '../public/videos/series/fargo-trailer.mp4',
-          thumbnailUrl: '../public/images/series/fargo.jpg',
-          airDate: new Date('2014-04-22')
-        },
-        {
-          seriesId: fargo._id,
-          season: 1,
-          episode: 3,
-          title: 'A Muddy Road',
-          description: 'Deputy Molly Solverson pursues the truth as bodies pile up.',
-          durationSec: 3390,
-          videoUrl: '../public/videos/series/fargo-trailer.mp4',
-          thumbnailUrl: '../public/images/series/fargo.jpg',
-          airDate: new Date('2014-04-29')
-        }
-      );
+      durationSec: 3420,
+      videoUrl: '../public/videos/series/fargo-trailer.mp4',
+      thumbnailUrl: '../public/images/series/fargo.jpg',
+      airDate: new Date('2014-04-22')
+    },
+    {
+      seriesId: fargo._id,
+      season: 1,
+      episode: 3,
+      title: 'A Muddy Road',
+      description: 'Deputy Molly Solverson pursues the truth as bodies pile up.',
+      durationSec: 3390,
+      videoUrl: '../public/videos/series/fargo-trailer.mp4',
+      thumbnailUrl: '../public/images/series/fargo.jpg',
+      airDate: new Date('2014-04-29')
     }
+  );
+}
 
-    if (houseOfDragon) {
-      episodesToInsert.push(
-        {
-          seriesId: houseOfDragon._id,
-          season: 1,
-          episode: 1,
-          title: 'The Heirs of the Dragon',
-          description: 'The Targaryen dynasty faces internal struggle over the Iron Throne.',
-          durationSec: 3800,
-          videoUrl: '../public/videos/series/house-of-the-dragon-trailer.mp4',
-          thumbnailUrl: '../public/images/series/house-of-the-dragon.jpg',
-          airDate: new Date('2022-08-21')
-        },
-        {
-          seriesId: houseOfDragon._id,
-          season: 1,
-          episode: 2,
-          title: 'The Rogue Prince',
-          description: 'Daemon Targaryen causes tension within the royal family.',
-          durationSec: 3700,
-          videoUrl: '../public/videos/series/house-of-the-dragon-trailer.mp4',
-          thumbnailUrl: '../public/images/series/house-of-the-dragon.jpg',
-          airDate: new Date('2022-08-28')
-        },
-        {
-          seriesId: houseOfDragon._id,
-          season: 1,
-          episode: 3,
-          title: 'Second of His Name',
-          description: 'Viserys faces pressure to secure his legacy while war brews in the Stepstones.',
-          durationSec: 3750,
-          videoUrl: '../public/videos/series/house-of-the-dragon-trailer.mp4',
-          thumbnailUrl: '../public/images/series/house-of-the-dragon.jpg',
-          airDate: new Date('2022-09-04')
-        }
-      );
+if (houseOfDragon) {
+  episodesToInsert.push(
+    {
+      seriesId: houseOfDragon._id,
+      season: 1,
+      episode: 1,
+      title: 'The Heirs of the Dragon',
+      description: 'The Targaryen dynasty faces internal struggle over the Iron Throne.',
+      durationSec: 3800,
+      videoUrl: '../public/videos/series/house-of-the-dragon-trailer.mp4',
+      thumbnailUrl: '../public/images/series/house-of-the-dragon.jpg',
+      airDate: new Date('2022-08-21')
+    },
+    {
+      seriesId: houseOfDragon._id,
+      season: 1,
+      episode: 2,
+      title: 'The Rogue Prince',
+      description: 'Daemon Targaryen causes tension within the royal family.',
+      durationSec: 3700,
+      videoUrl: '../public/videos/series/house-of-the-dragon-trailer.mp4',
+      thumbnailUrl: '../public/images/series/house-of-the-dragon.jpg',
+      airDate: new Date('2022-08-28')
+    },
+    {
+      seriesId: houseOfDragon._id,
+      season: 1,
+      episode: 3,
+      title: 'Second of His Name',
+      description: 'Viserys faces pressure to secure his legacy while war brews in the Stepstones.',
+      durationSec: 3750,
+      videoUrl: '../public/videos/series/house-of-the-dragon-trailer.mp4',
+      thumbnailUrl: '../public/images/series/house-of-the-dragon.jpg',
+      airDate: new Date('2022-09-04')
     }
+  );
+}
 
     //******Progress Sample Data (watch history for profiles)*******//
     // Delete existing seed progress to recreate it
@@ -916,90 +981,90 @@ async function seedDatabase() {
     }
     
     const progressToInsert = [];
-    // Profile 1 (Liel) has watched some episodes of The Boys
+// Profile 1 (Liel) has watched some episodes of The Boys
     if (theBoys && profiles && profiles[0]) {
-      progressToInsert.push(
-        {
-          profileId: profiles[0]._id,
-          contentId: theBoys._id,
-          episodeId: episodesToInsert.find(e => e.seriesId === theBoys._id && e.episode === 1)?._id,
-          lastPositionSec: 3300, // Finished episode 1
-          durationSec: 3300,
-          status: 'done',
-          watchPercentage: 100
-        },
-        {
-          profileId: profiles[0]._id,
-          contentId: theBoys._id,
-          episodeId: episodesToInsert.find(e => e.seriesId === theBoys._id && e.episode === 2)?._id,
-          lastPositionSec: 1600, // Halfway through episode 2
-          durationSec: 3250,
-          status: 'in_progress',
-          watchPercentage: 49
-        }
-      );
+  progressToInsert.push(
+    {
+      profileId: profiles[0]._id,
+      contentId: theBoys._id,
+      episodeId: episodesToInsert.find(e => e.seriesId === theBoys._id && e.episode === 1)?._id,
+      lastPositionSec: 3300, // Finished episode 1
+      durationSec: 3300,
+      status: 'done',
+      watchPercentage: 100
+    },
+    {
+      profileId: profiles[0]._id,
+      contentId: theBoys._id,
+      episodeId: episodesToInsert.find(e => e.seriesId === theBoys._id && e.episode === 2)?._id,
+      lastPositionSec: 1600, // Halfway through episode 2
+      durationSec: 3250,
+      status: 'in_progress',
+      watchPercentage: 49
     }
+  );
+}
 
-    // Profile 2 (Lihi) watched The Mandalorian episode 1
+// Profile 2 (Lihi) watched The Mandalorian episode 1
     if (mandalorian && profiles && profiles[1]) {
-      progressToInsert.push(
-        {
-          profileId: profiles[1]._id,
-          contentId: mandalorian._id,
-          episodeId: episodesToInsert.find(e => e.seriesId === mandalorian._id && e.episode === 1)?._id,
-          lastPositionSec: 3100,
-          durationSec: 3100,
-          status: 'done',
-          watchPercentage: 100
-        }
-      );
+  progressToInsert.push(
+    {
+      profileId: profiles[1]._id,
+      contentId: mandalorian._id,
+      episodeId: episodesToInsert.find(e => e.seriesId === mandalorian._id && e.episode === 1)?._id,
+      lastPositionSec: 3100,
+      durationSec: 3100,
+      status: 'done',
+      watchPercentage: 100
     }
+  );
+}
 
-    // Profile 3 (Amit) watched some True Detective and House of the Dragon
+// Profile 3 (Amit) watched some True Detective and House of the Dragon
     if (trueDetective && profiles && profiles[2]) {
-      progressToInsert.push(
-        {
-          profileId: profiles[2]._id,
-          contentId: trueDetective._id,
-          episodeId: episodesToInsert.find(e => e.seriesId === trueDetective._id && e.episode === 1)?._id,
-          lastPositionSec: 1800, // Halfway
-          durationSec: 3600,
-          status: 'in_progress',
-          watchPercentage: 50
-        }
-      );
+  progressToInsert.push(
+    {
+      profileId: profiles[2]._id,
+      contentId: trueDetective._id,
+      episodeId: episodesToInsert.find(e => e.seriesId === trueDetective._id && e.episode === 1)?._id,
+      lastPositionSec: 1800, // Halfway
+      durationSec: 3600,
+      status: 'in_progress',
+      watchPercentage: 50
     }
+  );
+}
 
     if (houseOfDragon && profiles && profiles[2]) {
-      progressToInsert.push(
-        {
-          profileId: profiles[2]._id,
-          contentId: houseOfDragon._id,
-          episodeId: episodesToInsert.find(e => e.seriesId === houseOfDragon._id && e.episode === 1)?._id,
-          lastPositionSec: 3800,
-          durationSec: 3800,
-          status: 'done',
-          watchPercentage: 100
-        }
-      );
+  progressToInsert.push(
+    {
+      profileId: profiles[2]._id,
+      contentId: houseOfDragon._id,
+      episodeId: episodesToInsert.find(e => e.seriesId === houseOfDragon._id && e.episode === 1)?._id,
+      lastPositionSec: 3800,
+      durationSec: 3800,
+      status: 'done',
+      watchPercentage: 100
     }
+  );
+}
 
-    // Optional: add one more for Fargo to simulate different behavior
+// Optional: add one more for Fargo to simulate different behavior
     if (fargo && profiles && profiles[1]) {
-      progressToInsert.push(
-        {
-          profileId: profiles[1]._id,
-          contentId: fargo._id,
-          episodeId: episodesToInsert.find(e => e.seriesId === fargo._id && e.episode === 1)?._id,
-          lastPositionSec: 1700, // Still watching
-          durationSec: 3400,
-          status: 'in_progress',
-          watchPercentage: 50
-        }
-      );
+  progressToInsert.push(
+    {
+      profileId: profiles[1]._id,
+      contentId: fargo._id,
+      episodeId: episodesToInsert.find(e => e.seriesId === fargo._id && e.episode === 1)?._id,
+      lastPositionSec: 1700, // Still watching
+      durationSec: 3400,
+      status: 'in_progress',
+      watchPercentage: 50
     }
+  );
+}
 
-    //******Like Sample Data (for profiles)*******//
+ //******Like Sample Data (for profiles)*******//
     // Delete existing seed likes to recreate them
     if (!isNewDatabase && profiles && profiles.length >= 4) {
       const seedContentIds = [theBoys, mandalorian, trueDetective, houseOfDragon, fargo]
@@ -1017,79 +1082,81 @@ async function seedDatabase() {
     
     const likesToInsert = [];
 
-    // Profile 1 likes The Boys and The Mandalorian
+  // Profile 1 likes The Boys and The Mandalorian
     if (theBoys && profiles && profiles[0]) {
-      likesToInsert.push({
-        profileId: profiles[0]._id,
-        contentId: theBoys._id,
-        liked: true
-      });
-    }
+    likesToInsert.push({
+      profileId: profiles[0]._id,
+      contentId: theBoys._id,
+      liked: true
+    });
+  }
 
     if (mandalorian && profiles && profiles[0]) {
-      likesToInsert.push({
-        profileId: profiles[0]._id,
-        contentId: mandalorian._id,
-        liked: true
-      });
-    }
+    likesToInsert.push({
+      profileId: profiles[0]._id,
+      contentId: mandalorian._id,
+      liked: true
+    });
+  }
 
-    // Profile 2 likes True Detective
+  // Profile 2 likes True Detective
     if (trueDetective && profiles && profiles[1]) {
-      likesToInsert.push({
-        profileId: profiles[1]._id,
-        contentId: trueDetective._id,
-        liked: true
-      });
-    }
+    likesToInsert.push({
+      profileId: profiles[1]._id,
+      contentId: trueDetective._id,
+      liked: true
+    });
+  }
 
-    // Profile 3 likes House of the Dragon
+  // Profile 3 likes House of the Dragon
     if (houseOfDragon && profiles && profiles[2]) {
-      likesToInsert.push({
-        profileId: profiles[2]._id,
-        contentId: houseOfDragon._id,
-        liked: true
-      });
-    }
+    likesToInsert.push({
+      profileId: profiles[2]._id,
+      contentId: houseOfDragon._id,
+      liked: true
+    });
+  }
     // Insert all the data
     if (episodesToInsert.length) {
       const insertedEpisodes = await Episode.insertMany(episodesToInsert);
       console.log(`Created sample episodes (${insertedEpisodes.length})`);
       
       // Now insert progress with actual episode IDs
-      // if (progressToInsert.length && insertedEpisodes.length > 0) {
-      //   // Map episode IDs properly - filter out any that don't have valid episodeIds
-      //   const validProgress = progressToInsert.filter(prog => {
-      //     // If episodeId is already set (from find), verify it exists in inserted episodes
-      //     if (prog.episodeId) {
-      //       const exists = insertedEpisodes.some(e => 
-      //         e._id.toString() === prog.episodeId.toString()
-      //       );
-      //       return exists;
-      //     }
-      //     return false;
-      //   });
-        
-      //   if (validProgress.length > 0) {
-      //     await Progress.insertMany(validProgress);
-      //     console.log(`Created sample progress (${validProgress.length})`);
-      //   } else {
-      //     console.log('No valid progress records to insert');
-      //   }
-      // }
-      progressToInsert.forEach(prog => {
-        if (prog.episodeId) {
-          const matchedEpisode = insertedEpisodes.find(e => e._id.toString() === prog.episodeId.toString());
-          if (matchedEpisode) prog.episodeId = matchedEpisode._id;
-        }
+      const remappedProgressToInsert = [];
+      const episodeMap = new Map(); // Map 'title' -> real _id
+      insertedEpisodes.forEach(ep => episodeMap.set(`${ep.seriesId}-${ep.season}-${ep.episode}`, ep._id));
+
+       progressToInsert.forEach(prog => {
+          // This logic is tricky. Let's find the original episode data
+          const originalEpisodeData = episodesToInsert.find(e => 
+              e.seriesId.equals(prog.contentId) &&
+              prog.lastPositionSec > 0 // This is a guess at the logic
+          );
+          
+          if(originalEpisodeData) {
+              const mapKey = `${originalEpisodeData.seriesId}-${originalEpisodeData.season}-${originalEpisodeData.episode}`;
+              const insertedEpisodeId = episodeMap.get(mapKey);
+              if(insertedEpisodeId) {
+                  prog.episodeId = insertedEpisodeId;
+                  remappedProgressToInsert.push(prog);
+              }
+          } else {
+             // Fallback for progress items that might not match episode 1
+             const fallbackEpisode = insertedEpisodes.find(e => e.seriesId.toString() === prog.contentId.toString());
+             if(fallbackEpisode) {
+                prog.episodeId = fallbackEpisode._id;
+                remappedProgressToInsert.push(prog);
+             }
+          }
       });
 
-      if (progressToInsert.length > 0) {
-        await Progress.insertMany(progressToInsert);
-        console.log(`Created sample progress (${progressToInsert.length})`);
+
+      if (remappedProgressToInsert.length > 0) {
+        await Progress.insertMany(remappedProgressToInsert);
+        console.log(`Created sample progress (${remappedProgressToInsert.length})`);
       } else {
-        console.log('No valid progress records to insert');
-      }
+        console.log('No valid progress records to insert (could not map episode IDs).');
+       }
       
       if (likesToInsert.length) {
         await Like.insertMany(likesToInsert);
@@ -1104,8 +1171,7 @@ async function seedDatabase() {
       console.log('No matching series found for episodes seeding');
     }
 
-    // //******WatchEvent Sample Data for Statistics*****//
-    // Delete existing seed watch events to recreate them
+  // ( ... WatchEvent ... remains the same ... )
     if (!isNewDatabase && profiles && profiles.length >= 4 && content && content.length >= 8) {
       const seedContentIds = content.slice(0, 8).map(c => c._id);
       const seedProfileIds = profiles.slice(0, 4).map(p => p._id);
@@ -1119,41 +1185,33 @@ async function seedDatabase() {
     }
     
     if (profiles && profiles.length >= 4 && content && content.length >= 8) {
-      const watchEvents = await WatchEvent.create([
-        // Profile 1 (Liel) watch events
-        { profileId: profiles[0]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
-        { profileId: profiles[0]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
-        { profileId: profiles[0]._id, contentId: content[2]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-16') },
-        { profileId: profiles[0]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
-        { profileId: profiles[0]._id, contentId: content[4]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-17') },
-        
-        // Profile 2 (Lihi) watch events  
-        { profileId: profiles[1]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
-        { profileId: profiles[1]._id, contentId: content[2]._id, event: 'complete', positionSec: 2200, createdAt: new Date('2025-10-16') },
-        { profileId: profiles[1]._id, contentId: content[5]._id, event: 'complete', positionSec: 3000, createdAt: new Date('2025-10-16') },
-        { profileId: profiles[1]._id, contentId: content[6]._id, event: 'complete', positionSec: 2600, createdAt: new Date('2025-10-17') },
-        
-        // Profile 3 (Amit) watch events
-        { profileId: profiles[2]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
-        { profileId: profiles[2]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
-        { profileId: profiles[2]._id, contentId: content[7]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-17') },
-        
-        { profileId: profiles[3]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-17') }
-      ]);
-      console.log('Created watch events');
+    const watchEvents = await WatchEvent.create([
+      { profileId: profiles[0]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
+      { profileId: profiles[0]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
+      { profileId: profiles[0]._id, contentId: content[2]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[0]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[0]._id, contentId: content[4]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-17') },
+      { profileId: profiles[1]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
+      { profileId: profiles[1]._id, contentId: content[2]._id, event: 'complete', positionSec: 2200, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[1]._id, contentId: content[5]._id, event: 'complete', positionSec: 3000, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[1]._id, contentId: content[6]._id, event: 'complete', positionSec: 2600, createdAt: new Date('2025-10-17') },
+      { profileId: profiles[2]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
+      { profileId: profiles[2]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
+      { profileId: profiles[2]._id, contentId: content[7]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-17') },
+      { profileId: profiles[3]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-17') }
+    ]);
+    console.log('Created watch events');
 
-      console.log('Database seeded successfully!');
-      console.log(`Created: ${users.length} users, ${profiles.length} profiles, ${content.length} content items, ${watchEvents.length} watch events`);
+    console.log('Database seeded successfully!');
+    console.log(`Created: ${users.length} users, ${profiles.length} profiles, ${content.length} content items, ${watchEvents.length} watch events`);
     } else {
       console.log('Skipping watch events - not enough profiles or content');
     }
-
+    
   } catch (error) {
     console.error('Error seeding database:', error);
     throw error; // Re-throw to let server handle it
   }
-  // Note: We don't close the connection here because server.js needs it to stay open
-  // mongoose.connection.close(); // ❌ Don't close - server needs the connection!
 }
 
 module.exports = seedDatabase; 

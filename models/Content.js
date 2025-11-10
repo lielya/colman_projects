@@ -53,7 +53,19 @@ const contentSchema = new mongoose.Schema({
       required: true,
       trim: true
     }
-  }]
+  }],
+
+  videoUrl: { 
+    type: String
+    
+  },
+  director: { 
+    type: String 
+  },
+  rating: { 
+    type: String 
+  }
+
 });
 
 contentSchema.index({
@@ -63,4 +75,3 @@ contentSchema.index({
 });
 
 module.exports = mongoose.model("Content", contentSchema);
-

@@ -224,6 +224,25 @@
     }
     .movie-play-btn:hover{ background:#f40612; }
     .episodes-section{ margin-top:25px; padding-top:20px; border-top:1px solid #333; }
+
+  /* Style for the new rating on the card */
+  .media-rating {
+  display: flex;
+  align-items: center;
+  gap: 5px; 
+  color: #fff; 
+  font-size: 0.85rem; 
+  font-weight: 600;
+  }
+
+  .media-rating .bi-star-fill {
+  color: #fff; 
+  font-size: 0.8rem; 
+  }
+
+  .admin-only {
+    display: none; 
+  }
   </style>
 </head>
 <body>
@@ -246,6 +265,10 @@
             <li class="nav-item"><a href="#">New & Popular</a></li>
             <li class="nav-item"><a href="#">My List</a></li>
             <li class="nav-item"><a href="#">Browse by Languages</a></li>
+            <li class="nav-item admin-only"> <a href="/admin/add-content">
+                <i class="bi bi-upload"></i> Add Content
+              </a>
+            </li>
           </ul>
         </div>
 

@@ -94,6 +94,8 @@ exports.login = async (req, res) => {
       username: user.username
     };
 
+    req.session.user = userData;
+
     res.json({ message: 'success', user: userData });
   } catch (err) {
     console.error('Login error:', err);

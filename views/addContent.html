@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netflix Admin: Add Content</title>
+    
+    <link rel="icon" href="https://www.freepnglogos.com/uploads/netflix-logo-0.png" type="image/x-icon">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
+    
+    <style>
+        body {
+            background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url('https://assets.nflxext.com/ffe/siteui/vlv3/a1dc92ca-091d-4ca9-a05b-8cd44bbfce6a/f9368347-e982-4856-a5a4-396796381f28/RS-en-20191230-popsignuptwoweeks-perspective_alpha_website_large.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px 0; 
+        }
+
+        .admin-container {
+            background-color: rgba(0, 0, 0, 0.85); 
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
+            max-width: 800px; 
+            width: 100%;
+            margin: auto;
+        }
+
+        .admin-container h1 {
+            color: #E50914; 
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 700;
+        }
+
+        .admin-container .logo {
+            display: block;
+            margin: 0 auto 20px auto;
+            width: 120px;
+        }
+
+        .form-label, .col-form-label {
+            color: #ccc;
+            font-weight: 500;
+        }
+
+        @media (min-width: 576px) { 
+            .col-form-label {
+                text-align: right;
+                padding-right: 0;
+            }
+        }
+
+        .form-control, .form-select {
+            background-color: #333;
+            border: 1px solid #555;
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 4px;
+        }
+
+        .form-control:focus, .form-select:focus {
+            background-color: #444;
+            border-color: #E50914;
+            box-shadow: 0 0 0 0.25rem rgba(229, 9, 20, 0.25);
+            color: #fff;
+        }
+
+        .form-control:-webkit-autofill,
+        .form-control:-webkit-autofill:hover, 
+        .form-control:-webkit-autofill:focus,
+        .form-control:-webkit-autofill:active  {
+            -webkit-box-shadow: 0 0 0 30px #333 inset !important;
+            -webkit-text-fill-color: #fff !important;
+        }
+
+        .btn-netflix {
+            background-color: #E50914;
+            border-color: #E50914;
+            color: #fff;
+            padding: 12px 25px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 4px;
+            transition: background-color 0.3s ease;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .btn-netflix:hover {
+            background-color: #F40612; 
+            border-color: #F40612;
+            color: #fff;
+        }
+
+        .alert-message {
+            margin-top: 20px;
+            text-align: center;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            word-wrap: break-word; /* למקרה שהשגיאה ארוכה מאוד */
+        }
+        .alert-success {
+            background-color: #28a745;
+            color: #fff;
+        }
+        .alert-danger {
+            background-color: #dc3545;
+            color: #fff;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+                align-items: flex-start; 
+            }
+            .admin-container {
+                padding: 25px;
+            }
+            .admin-container h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    
+    <div class="admin-container">
+        <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix Logo" class="logo">
+        <h1>Add New Content</h1>
+
+        <form id="addContentForm" enctype="multipart/form-data">
+
+            <div class="row mb-3 align-items-center">
+                <label for="uniqueId" class="col-sm-3 col-form-label">Unique ID</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" id="uniqueId" name="id" required>
+                </div>
+            </div>
+
+            <div class="row mb-3 align-items-center">
+                <label for="title" class="col-sm-3 col-form-label">Content Title</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" id="title" name="title" required>
+                </div>
+            </div>
+
+            <div class="row mb-3 align-items-center">
+                <label for="type" class="col-sm-3 col-form-label">Type</label>
+                <div class="col-sm-9">
+                    <select class="form-select" id="type" name="type" required>
+                        <option value="">Select Type</option>
+                        <option value="movie">Movie</option>
+                        <option value="series">Series</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row mb-3 align-items-center">
+                <label for="year" class="col-sm-3 col-form-label">Release Year</label>
+                <div class="col-sm-9">
+                    <input type="number" class="form-control" id="year" name="year" min="1900" max="2099" required>
+                </div>
+            </div>
+
+            <div class="row mb-3 align-items-center">
+                <label for="category" class="col-sm-3 col-form-label">Category (Genre)</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" id="category" name="category" placeholder="e.g., Action, Drama, Comedy" required>
+                </div>
+            </div>
+            
+            <div class="row mb-3 align-items-center">
+                <label for="director" class="col-sm-3 col-form-label">Director</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" id="director" name="director">
+                </div>
+            </div>
+
+            <div class="row mb-3"> 
+                <label for="info" class="col-sm-3 col-form-label">Info (Summary)</label>
+                <div class="col-sm-9">
+                    <textarea class="form-control" id="info" name="info" rows="3" required></textarea>
+                </div>
+            </div>
+            
+            <hr style="border-color: #444; margin: 25px 0;">
+            
+            <div class="row mb-3">
+                <label for="actors_names" class="col-sm-3 col-form-label">Actor Names<br><small>(one per line)</small></label>
+                <div class="col-sm-9">
+                    <textarea class="form-control" id="actors_names" name="actors_names" rows="3"></textarea>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <label for="actors_urls" class="col-sm-3 col-form-label">Actor URLs<br><small>(one per line)</small></label>
+                <div class="col-sm-9">
+                    <textarea class="form-control" id="actors_urls" name="actors_urls" rows="3" placeholder="Must match order of names"></textarea>
+                </div>
+            </div>
+
+            <hr style="border-color: #444; margin: 25px 0;">
+
+            <div class="row mb-3 align-items-center">
+                <label for="posterImage" class="col-sm-3 col-form-label">Poster Image</label>
+                <div class="col-sm-9">
+                    <input class="form-control" type="file" id="posterImage" name="posterImage" accept="image/*" required>
+                </div>
+            </div>
+
+            <div class="row mb-3 align-items-center">
+                <label for="backdropImage" class="col-sm-3 col-form-label">Backdrop Image</label>
+                <div class="col-sm-9">
+                    <input class="form-control" type="file" id="backdropImage" name="backdropImage" accept="image/*" required>
+                </div>
+            </div>
+
+            <div class="row mb-3 align-items-center">
+                <label for="videoFile" class="col-sm-3 col-form-label">Video File (MP4)</label>
+                <div class="col-sm-9">
+                    <input class="form-control" type="file" id="videoFile" name="videoFile" accept="video/mp4" required>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-netflix">Add Content</button>
+            <div id="message" class="alert-message d-none"></div>
+        </form>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        document.getElementById('addContentForm').addEventListener('submit', async function(event) {
+            event.preventDefault(); 
+
+            const form = event.target;
+            const formData = new FormData(form);
+            const messageDiv = document.getElementById('message');
+            const submitButton = form.querySelector('button[type="submit"]');
+
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...';
+            messageDiv.classList.add('d-none'); // הסתר הודעות ישנות
+
+            try {
+                const response = await fetch('/admin/add-content', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    body: formData
+                });
+
+                // --- 👇 התיקון הקריטי נמצא כאן 👇 ---
+                // 1. קרא את התשובה כטקסט, פעם אחת בלבד
+                const responseText = await response.text();
+                
+                let result;
+                try {
+                    // 2. נסה לפענח את הטקסט כ-JSON
+                    result = JSON.parse(responseText);
+                } catch (jsonError) {
+                    // 3. אם זה נכשל (כי זה HTML של שגיאה), נטפל בזה
+                    if (!response.ok) {
+                        // responseText מכיל את הודעת השגיאה מהשרת
+                        throw new Error(responseText || `Server error: ${response.status}`);
+                    }
+                    // אם response.ok=true אבל זה לא JSON, זה מקרה מוזר
+                    result = { message: "Success, but server response was not valid JSON." };
+                }
+                // --- 👆 סוף התיקון 👆 ---
+
+                if (response.ok) {
+                    messageDiv.classList.remove('d-none', 'alert-danger');
+                    messageDiv.classList.add('alert-success');
+                    messageDiv.textContent = result.message || "Content added successfully!";
+                    form.reset(); 
+                    
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Add Content';
+
+                    setTimeout(() => {
+                        window.location.href = result.redirect || '/';
+                    }, 2000); 
+                } else {
+                    // אם זה היה JSON אבל עם שגיאה (כמו "Unique ID already exists")
+                    throw new Error(result.error || 'An unknown error occurred.');
+                }
+            } catch (error) {
+                console.error('Error submitting form:', error);
+                messageDiv.classList.remove('d-none', 'alert-success');
+                messageDiv.classList.add('alert-danger');
+                
+                // נקה את הודעת השגיאה (לפעמים היא מכילה HTML)
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = error.message;
+                const cleanError = tempDiv.textContent || tempDiv.innerText || error.message;
+                
+                // הצג רק את החלק הרלוונטי של השגיאה
+                const errorLines = cleanError.split('\n');
+                messageDiv.textContent = errorLines[0] || "An error occurred."; // הצג רק את השורה הראשונה
+
+                submitButton.disabled = false;
+                submitButton.textContent = 'Add Content';
+            }
+        });
+    </script>
+    </body>
+</html>
