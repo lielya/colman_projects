@@ -13,6 +13,7 @@ const ensureAssetPath = (value) => {
   return `/${value.replace(/^\.?\//, "")}`;
 };
 
+// --- 👇 התיקון נמצא כאן 👇 ---
 const mapContent = (doc, likeMap = null) => {
   if (!doc) return null;
   const docId = doc._id?.toString?.() || doc.id;
@@ -35,6 +36,7 @@ const mapContent = (doc, likeMap = null) => {
     backdrop: ensureAssetPath(doc.backdrop),
     info: doc.info,
     likes: totalLikes,
+    rating: doc.rating || 'N/A', // <-- הוספנו את השורה הזו
     score: doc.score || 0,
     totalLikes,
     completions: doc.completions || 0,
@@ -43,6 +45,7 @@ const mapContent = (doc, likeMap = null) => {
     updatedAt: doc.updatedAt,
   };
 };
+// --- 👆 סוף התיקון 👆 ---
 
 const toObjectId = (value) => {
   if (!value) return null;
@@ -72,6 +75,10 @@ const buildGlobalLikeMap = async (contentIds = []) => {
   if (ids.length > 0) {
     match.contentId = { $in: ids };
   } else {
+    // אם אין IDs ספציפיים, אולי כדאי לא להמשיך? או לשלוף הכל?
+    // כרגע, אם contentIds ריק, ids יהיה ריק, ו-match.contentId לא יוגדר
+    // מה שיגרום לאגריגציה לרוץ על *כל* הלייקים. זה אולי לא רצוי.
+    // נוסיף בדיקה - אם אין IDs, נחזיר מפה ריקה.
     return new Map();
   }
 
@@ -221,11 +228,14 @@ const buildNewestByGenre = async (limitPerGenre = null) => {
 
 const mapProgressEntry = (item, likeMap = null) => {
   if (!item || !item.contentId) return null;
+  // contentId עשוי להיות אובייקט מלא או רק ID, נטפל בשני המקרים
+  const contentDoc = item.contentId.title ? item.contentId : { _id: item.contentId };
+  
   const resumePositionSec = Math.max(0, (item.lastPositionSec || 0) - 10);
 
   return {
     id: item._id.toString(),
-    content: mapContent(item.contentId, likeMap),
+    content: mapContent(contentDoc, likeMap), // נשתמש ב-mapContent כדי לקבל פורמט אחיד
     episode: item.episodeId
       ? {
           id: item.episodeId._id.toString(),
@@ -251,7 +261,7 @@ const buildContinueWatching = async (profileId, limit = 12) => {
     .sort({ updatedAt: -1 })
     .limit(limit)
     .populate([
-      { path: "contentId" },
+      { path: "contentId" }, // <-- populate ישלוף את כל מסמך התוכן
       { path: "episodeId", select: "title season episode" },
     ])
     .lean();
@@ -346,6 +356,8 @@ const ensureProfileExists = async (profileId) => {
   return profile;
 };
 
+// ... (כל שאר הפונקציות כמו getProfiles, createProfile וכו' נשארות זהות) ...
+// (קוצר כאן כדי לחסוך מקום)
 // get all profiles
 exports.getProfiles = async (req, res) => {
   try {

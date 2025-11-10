@@ -32,23 +32,23 @@ const createContent = async (req, res) => {
 
       let finalRating = 'N/A';
       
-      // 1. נסה למצוא דירוג IMDb
+  // 1. Try to find an IMDb rating
       if (movieData.imdbRating && movieData.imdbRating !== 'N/A') {
-        finalRating = movieData.imdbRating; // ⬅️ עדיפות ל-IMDb
+        finalRating = movieData.imdbRating; // ⬅️ Prefer IMDb
       } 
-      // 2. אם אין, נסה למצוא Rotten Tomatoes ולהמיר אותו
+  // 2. If not, try to find Rotten Tomatoes and convert it
       else if (movieData.Ratings && Array.isArray(movieData.Ratings)) {
         const rtRating = movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes');
         
         if (rtRating && rtRating.Value.includes('%')) {
-          // המרה: "94%" -> 94 -> 9.4
+          // Conversion: "94%" -> 94 -> 9.4
           const percentString = rtRating.Value.replace('%', ''); // "94"
           const percentNumber = parseFloat(percentString); // 94
           if (!isNaN(percentNumber)) {
             finalRating = (percentNumber / 10.0).toFixed(1); // "9.4"
           }
         }
-        // 3. גיבוי: Metacritic "84/100"
+  // 3. Fallback: Metacritic "84/100"
         else if (finalRating === 'N/A') {
           const mcRating = movieData.Ratings.find(r => r.Source === 'Metacritic');
           if (mcRating && mcRating.Value.includes('/100')) {
@@ -60,7 +60,7 @@ const createContent = async (req, res) => {
           }
         }
       }
-      // --- 👆 סוף הלוגיקה החדשה 👆 ---
+  // --- 👆 End of the new logic 👆 ---
   
       // 3. Build Actors Array
       const actorNames = req.body.actors_names.split('\n').map(name => name.trim()).filter(Boolean);
@@ -88,7 +88,7 @@ const createContent = async (req, res) => {
         backdrop: backdropPath,
         videoUrl: videoPath,
         actors: actors,
-        rating: finalRating // שמירת הדירוג המומר
+  rating: finalRating // saving the converted rating
       });
   
       await newContent.save();

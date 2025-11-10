@@ -1,6 +1,6 @@
 //loading mongoose and models
 const mongoose = require('mongoose');
-const fetch = require('node-fetch'); // ודא שהתקנת node-fetch@2
+const fetch = require('node-fetch'); // Make sure you've installed node-fetch@2
 
 const Content = require('./models/Content');
 const Profile = require('./models/Profile');
@@ -10,7 +10,7 @@ const Like = require('./models/Like');
 const Progress = require('./models/Progress');
 const WatchEvent = require('./models/WatchEvent');
 
-// ... ( actorsData ... נשאר זהה, קוצר כאן כדי לחסוך מקום )
+// ... (actorsData ... remains the same, shortened here to save space)
 const actorsData = {
   "Breaking Bad": [
     { name: "Bryan Cranston", wikipediaUrl: "https://en.wikipedia.org/wiki/Bryan_Cranston" },
@@ -221,7 +221,7 @@ const actorsData = {
  */
 async function getRatingForTitle(title) {
   try {
-    const apiKey = process.env.OMDB_API_KEY || 'd11be0e4'; // ⚠️ ודא שהמפתח שלך כאן
+    const apiKey = process.env.OMDB_API_KEY || 'd11be0e4'; // ⚠️ Make sure your API key is set here
     
     if (apiKey === 'YOUR_OMDB_API_KEY_HERE') {
       console.warn(`[Seeder] OMDb API key not set. Skipping rating for "${title}".`);
@@ -237,26 +237,26 @@ async function getRatingForTitle(title) {
       return 'N/A';
     }
 
-    // --- 👇 לוגיקה חדשה עם המרה (IMDb קודם) 👇 ---
+  // --- 👇 New logic with conversion (IMDb first) 👇 ---
     let finalRating = 'N/A';
     
-    // 1. נסה למצוא דירוג IMDb
+  // 1. Try to find an IMDb rating
     if (movieData.imdbRating && movieData.imdbRating !== 'N/A') {
-      finalRating = movieData.imdbRating; // ⬅️ עדיפות ל-IMDb
+      finalRating = movieData.imdbRating; // ⬅️ Prefer IMDb
     } 
-    // 2. אם אין, נסה למצוא Rotten Tomatoes ולהמיר אותו
+  // 2. If not, try to find Rotten Tomatoes and convert it
     else if (movieData.Ratings && Array.isArray(movieData.Ratings)) {
       const rtRating = movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes');
       
       if (rtRating && rtRating.Value.includes('%')) {
-        // המרה: "94%" -> 9.4
+        // Conversion: "94%" -> 9.4
         const percentString = rtRating.Value.replace('%', '');
         const percentNumber = parseFloat(percentString);
         if (!isNaN(percentNumber)) {
           finalRating = (percentNumber / 10.0).toFixed(1); 
         }
       }
-      // 3. גיבוי: Metacritic
+  // 3. Fallback: Metacritic
       else if (finalRating === 'N/A') {
         const mcRating = movieData.Ratings.find(r => r.Source === 'Metacritic');
         if (mcRating && mcRating.Value.includes('/100')) {
@@ -268,7 +268,7 @@ async function getRatingForTitle(title) {
         }
       }
     }
-    // --- 👆 סוף הלוגיקה החדשה 👆 ---
+  // --- 👆 End of the new logic 👆 ---
     
     return finalRating;
   } catch (error) {
@@ -314,14 +314,14 @@ async function seedDatabase() {
           }
         }
         
-        // --- 👇 התיקון הקריטי נמצא כאן 👇 ---
-        // נכריח עדכון אם הדירוג חסר, או N/A, או אם הוא עדיין מכיל סימן אחוז
+  // --- 👇 The critical fix is here 👇 ---
+  // Force update if rating is missing, 'N/A', or still contains a percent sign
         const needsRatingUpdate = !contentItem.rating || 
                                 contentItem.rating === 'N/A' || 
                                 contentItem.rating.includes('%');
 
         if (needsRatingUpdate) {
-        // --- 👆 סוף התיקון 👆 ---
+  // --- 👆 End of the fix 👆 ---
           console.log(`[Seeder] Fetching/Updating rating for: ${contentItem.title}`);
           contentItem.rating = await getRatingForTitle(contentItem.title);
           ratingUpdatedCount++;
@@ -340,7 +340,7 @@ async function seedDatabase() {
         console.log(`Updated ${ratingUpdatedCount} content items with new ratings.`);
       }
       
-      // ( ... המשך הקוד ... נשאר זהה )
+  // ( ... rest of the code ... remains unchanged )
       if (users.length < 4) {
         console.log('Not enough users found. Creating users...');
         const usersToCreate = [];
@@ -455,7 +455,7 @@ async function seedDatabase() {
       console.log('Created profiles');
     }
 
-    // ( ... baselineLikes נשאר זהה ... )
+  // ( ... baselineLikes remains the same ... )
     const baselineLikes = {
       "Breaking Bad": 420, "Lost": 180, "Game of Thrones": 390, "Ozark": 140, "Squid Game": 260,
       "The Last Dance": 120, "Stranger Things": 350, "Chernobyl": 210, "The Crown": 160, "Narcos": 190,
@@ -467,7 +467,7 @@ async function seedDatabase() {
       "Coco": 290, "Dune": 310, "Arrival": 185, "Inside Out": 275, "The Social Network": 195,
     };
     
-    // ( ... contentData נשאר זהה, קוצר כאן ... )
+  // ( ... contentData remains the same, shortened here ... )
     const contentData = [
   //series
   {
@@ -729,8 +729,8 @@ async function seedDatabase() {
         item.actors = [];
       }
       
-      // אנו משיגים את הדירוג כאן כדי שיהיה זמין גם ליצירה חדשה
-      item.rating = await getRatingForTitle(item.title);
+  // We fetch the rating here so it will be available for newly created content
+  item.rating = await getRatingForTitle(item.title);
     }
     console.log('[Seeder] Rating fetching complete.');
 
@@ -744,15 +744,15 @@ async function seedDatabase() {
       
       const contentToCreate = contentData.filter(item => !existingTitles.has(item.title));
       if (contentToCreate.length > 0) {
-        // הדירוגים כבר נמצאים ב-contentToCreate מהלולאה הקודמת
+        // The ratings are already present in contentToCreate from the previous loop
         const newContent = await Content.create(contentToCreate);
         console.log(`Created ${newContent.length} missing content items`);
         content = await Content.find({}).sort({ _id: 1 });
       }
     }
 
-    // ( ... כל שאר הקוד של פרקים, התקדמות, לייקים וכו' נשאר זהה ... )
-    // ... (קוצר כדי לחסוך מקום) ...
+  // ( ... all the rest of the code for episodes, progress, likes, etc. remains the same ... )
+  // ... (shortened here to save space) ...
     // //******Episodes Sample Data*******//
     // ****** Episodes Sample Data *******
     const episodesToInsert = [];
@@ -1171,7 +1171,7 @@ async function seedDatabase() {
       console.log('No matching series found for episodes seeding');
     }
 
-    // ( ... WatchEvent ... נשאר זהה ... )
+  // ( ... WatchEvent ... remains the same ... )
     if (!isNewDatabase && profiles && profiles.length >= 4 && content && content.length >= 8) {
       const seedContentIds = content.slice(0, 8).map(c => c._id);
       const seedProfileIds = profiles.slice(0, 4).map(p => p._id);

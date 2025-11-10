@@ -557,6 +557,10 @@ document.addEventListener("DOMContentLoaded", () => {
               content.category || "General"
             )}</span>
           </div>
+          <div class="media-rating mt-1">
+              <i class="bi bi-star-fill"></i>
+              <span>${escapeHtml(content.rating || 'N/A')}</span>
+          </div>
           <p class="media-meta mt-2" title="${escapeHtml(
             content.info || ""
           )}">${escapeHtml(content.info || "")}</p>
