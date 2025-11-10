@@ -41,7 +41,19 @@ const contentSchema = new mongoose.Schema({
   likes: {
     type: Number,
     default: 0
-  }
+  },
+  actors: [{
+    name: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    wikipediaUrl: {
+      type: String,
+      required: true,
+      trim: true
+    }
+  }]
 });
 
 contentSchema.index({

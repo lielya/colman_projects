@@ -30,8 +30,15 @@ document.addEventListener("DOMContentLoaded", () => {
     heroMeta: document.getElementById("heroMeta"),
     heroDesc: document.getElementById("heroDesc"),
     heroPlay: document.getElementById("heroPlay"),
+    heroWatchFromBeginning: document.getElementById("heroWatchFromBeginning"),
     heroInfo: document.getElementById("heroInfo"),
     sections: document.getElementById("feedSections"),
+    episodesModal: document.getElementById("episodesModal"),
+    episodesModalOverlay: document.getElementById("episodesModalOverlay"),
+    episodesModalClose: document.getElementById("episodesModalClose"),
+    episodesModalTitle: document.getElementById("episodesModalTitle"),
+    episodesModalInfo: document.getElementById("episodesModalInfo"),
+    episodesModalBody: document.getElementById("episodesModalBody"),
   };
 
   const state = {
@@ -154,6 +161,7 @@ document.addEventListener("DOMContentLoaded", () => {
       merged.totalLikes = merged.likes;
       merged.score = merged.score || existing.score || 0;
       merged.completions = merged.completions || existing.completions || 0;
+      merged.actors = merged.actors || existing.actors || [];
 
       state.contentById.set(content.id, merged);
 
@@ -247,8 +255,20 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.heroPlay.dataset.resume = progress?.resumePositionSec || 0;
     elements.heroPlay.dataset.duration = progress?.durationSec || 0;
     elements.heroPlay.dataset.episodeId = progress?.episode?.id || "";
-    elements.heroPlay.textContent = progress ? "Resume" : "Play";
-    elements.heroPlay.onclick = () => handlePlay(stored.id);
+    // Open content modal for both series and movies
+    elements.heroPlay.textContent = stored.type === "series" ? "View Episodes" : (progress ? "Resume" : "Play");
+    elements.heroPlay.onclick = () => openContentModal(stored);
+
+    // Show "Watch from Beginning" button only if progress exists
+    if (elements.heroWatchFromBeginning) {
+      if (progress && progress.watchPercentage > 0) {
+        elements.heroWatchFromBeginning.style.display = "inline-block";
+        elements.heroWatchFromBeginning.dataset.contentId = stored.id;
+        elements.heroWatchFromBeginning.onclick = () => handlePlayFromBeginning(stored.id);
+      } else {
+        elements.heroWatchFromBeginning.style.display = "none";
+      }
+    }
 
     elements.heroInfo.onclick = () => {
       const info = [
@@ -586,11 +606,18 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="progress-value" style="width:${percentage}%"></div>
       </div>
       <div class="progress-label">Resume from ${resumeLabel} (${percentage}% watched)</div>
-      <button class="resume-btn btn btn-sm btn-light mt-2" data-content-id="${
-        progress.content.id
-      }" data-progress-id="${progress.id}">
-        Resume
-      </button>
+      <div class="d-flex gap-2 mt-2" style="flex-wrap: wrap;">
+        <button class="resume-btn btn btn-sm btn-light" data-content-id="${
+          progress.content.id
+        }" data-progress-id="${progress.id}">
+          Resume
+        </button>
+        <button class="watch-from-beginning-btn btn btn-sm" data-content-id="${
+          progress.content.id
+        }">
+          <i class="bi bi-arrow-clockwise me-1"></i>Watch from Beginning
+        </button>
+      </div>
     `;
   }
 
@@ -672,6 +699,20 @@ document.addEventListener("DOMContentLoaded", () => {
     if (elements.sections) {
       elements.sections.addEventListener("click", handleSectionClick);
     }
+
+    // Episodes modal close handlers
+    if (elements.episodesModalClose) {
+      elements.episodesModalClose.addEventListener("click", closeEpisodesModal);
+    }
+    if (elements.episodesModalOverlay) {
+      elements.episodesModalOverlay.addEventListener("click", closeEpisodesModal);
+    }
+    // Close modal on Escape key
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && elements.episodesModal.style.display !== "none") {
+        closeEpisodesModal();
+      }
+    });
   }
 
   async function performSearch(query) {
@@ -709,9 +750,19 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    const watchFromBeginningBtn = event.target.closest(".watch-from-beginning-btn");
+    if (watchFromBeginningBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const contentId = watchFromBeginningBtn.dataset.contentId;
+      if (contentId) handlePlayFromBeginning(contentId);
+      return;
+    }
+
     const resumeBtn = event.target.closest(".resume-btn");
     if (resumeBtn) {
       event.preventDefault();
+      event.stopPropagation();
       const contentId = resumeBtn.dataset.contentId;
       if (contentId) handlePlay(contentId);
       return;
@@ -719,11 +770,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const card = event.target.closest(".media-card");
     if (card) {
+      event.preventDefault();
       const contentId = card.dataset.id;
       const content = state.contentById.get(contentId);
       if (content) {
-        renderHero(content);
-        localStorage.setItem("lastViewedContentId", contentId);
+        // Open content modal for both series and movies
+    openContentModal(content);
       }
     }
   }
@@ -865,6 +917,89 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     } catch (error) {
       console.error("Failed to update progress:", error);
+    }
+  }
+
+  async function handlePlayFromBeginning(contentId) {
+    const content = state.contentById.get(contentId);
+    if (!content) return;
+
+    try {
+      let episodeId = null;
+      let durationSec = 0;
+
+      // For series, get the first episode (season 1, episode 1)
+      if (content.type === "series") {
+        const response = await fetch(
+          `/api/content/${contentId}/first-episode`
+        );
+        if (response.ok) {
+          const firstEpisode = await response.json();
+          episodeId = firstEpisode.id;
+          durationSec = firstEpisode.durationSec || 0;
+        } else {
+          console.warn("Could not find first episode for series:", contentId);
+          // Continue without episodeId - the backend will handle it
+        }
+      }
+
+      // Reset progress to beginning (position 0)
+      const payload = {
+        contentId,
+        episodeId: episodeId || null,
+        lastPositionSec: 0,
+        durationSec: durationSec || 0,
+        watchPercentage: 0,
+        status: "in_progress",
+        event: "start",
+      };
+
+      const progressResponse = await fetch(
+        `/api/profiles/${state.profileId}/progress`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!progressResponse.ok) {
+        throw new Error(
+          `Progress update failed with status ${progressResponse.status}`
+        );
+      }
+
+      const result = await progressResponse.json();
+      const updated = result.progress;
+      if (updated?.content) {
+        state.progressMap.set(updated.content.id, updated);
+        const list = state.sections.continueWatching || [];
+        const idx = list.findIndex(
+          (entry) => entry.content?.id === updated.content.id
+        );
+        if (idx >= 0) {
+          list[idx] = updated;
+        } else {
+          list.unshift(updated);
+        }
+        state.sections.continueWatching = list;
+        buildIndices();
+        renderSections();
+        
+        // Update hero if this content is currently displayed
+        const heroContentId = elements.heroPlay?.dataset.contentId;
+        if (heroContentId === contentId) {
+          renderHero(content);
+        }
+      }
+
+      const episodeInfo = content.type === "series" && episodeId
+        ? " from the first episode"
+        : "";
+      alert(`Starting ${content.title}${episodeInfo} from the beginning...`);
+    } catch (error) {
+      console.error("Failed to start from beginning:", error);
+      alert("Unable to start playback from the beginning. Please try again.");
     }
   }
 
@@ -1244,6 +1379,323 @@ document.addEventListener("DOMContentLoaded", () => {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
+  }
+
+  async function openContentModal(content) {
+    if (!content || !elements.episodesModal) return;
+
+    // Get the full content data from state (includes actors)
+    let fullContent = state.contentById.get(content.id) || content;
+
+    // Always try to fetch fresh content from API to ensure we have actors
+    try {
+      const response = await fetch(`/api/content/${content.id}`);
+      if (response.ok) {
+        const apiContent = await response.json();
+        if (apiContent) {
+          // Merge API data with existing data
+          fullContent = { ...fullContent, ...apiContent };
+          // Update state
+          state.contentById.set(content.id, fullContent);
+        }
+      }
+    } catch (error) {
+      console.warn("Could not fetch content details from API, using cached data:", error);
+    }
+
+    // Debug: log actors
+    console.log("Content actors:", fullContent.actors, "for content:", fullContent.title);
+    console.log("Full content object:", fullContent);
+
+    // Set modal title and info
+    elements.episodesModalTitle.textContent = fullContent.title || "";
+    const metaParts = [];
+    if (fullContent.year) metaParts.push(fullContent.year);
+    if (fullContent.type) metaParts.push(fullContent.type === "series" ? "Series" : "Movie");
+    if (fullContent.category) metaParts.push(fullContent.category);
+    elements.episodesModalInfo.textContent = metaParts.join(" · ") || "";
+
+    // Show modal
+    elements.episodesModal.style.display = "flex";
+
+    // Render content info and actors first
+    renderContentInfo(fullContent);
+
+    // If it's a series, load and render episodes
+    if (fullContent.type === "series") {
+      // Show loading indicator for episodes
+      const loadingHtml = '<div class="episodes-loading">Loading episodes...</div>';
+      elements.episodesModalBody.insertAdjacentHTML("beforeend", loadingHtml);
+
+      try {
+        const response = await fetch(`/api/content/${fullContent.id}/episodes`);
+        if (!response.ok) {
+          if (response.status === 404) {
+            const loadingEl = elements.episodesModalBody.querySelector(".episodes-loading");
+            if (loadingEl) loadingEl.textContent = "No episodes found for this series.";
+            return;
+          }
+          throw new Error(`Failed to load episodes: ${response.status}`);
+        }
+
+        const episodes = await response.json();
+        const loadingEl = elements.episodesModalBody.querySelector(".episodes-loading");
+        if (loadingEl) loadingEl.remove();
+
+        if (!episodes || episodes.length === 0) {
+          elements.episodesModalBody.insertAdjacentHTML("beforeend", '<div class="episodes-loading">No episodes available.</div>');
+          return;
+        }
+
+        // Render episodes grouped by season
+        renderEpisodes(episodes, fullContent);
+      } catch (error) {
+        console.error("Error loading episodes:", error);
+        const loadingEl = elements.episodesModalBody.querySelector(".episodes-loading");
+        if (loadingEl) {
+          loadingEl.textContent = "Error loading episodes. Please try again.";
+        } else {
+          elements.episodesModalBody.insertAdjacentHTML("beforeend", '<div class="episodes-loading">Error loading episodes. Please try again.</div>');
+        }
+      }
+    } else {
+      // For movies, show play button
+      renderMovieActions(fullContent);
+    }
+  }
+
+  function renderContentInfo(content) {
+    if (!content || !elements.episodesModalBody) return;
+
+    // Debug: log to see what we have
+    console.log("Rendering content info for:", content.title);
+    console.log("Actors data:", content.actors);
+    console.log("Actors type:", typeof content.actors);
+    console.log("Actors length:", content.actors?.length);
+
+    const actors = Array.isArray(content.actors) ? content.actors : [];
+    const hasActors = actors.length > 0;
+
+    const infoHtml = `
+      <div class="content-info-section">
+        <div class="content-details">
+          <div class="content-detail-item">
+            <span class="content-detail-label">Type:</span>
+            <span class="content-detail-value">${content.type === "series" ? "Series" : "Movie"}</span>
+          </div>
+          <div class="content-detail-item">
+            <span class="content-detail-label">Title:</span>
+            <span class="content-detail-value">${escapeHtml(content.title || "")}</span>
+          </div>
+          <div class="content-detail-item">
+            <span class="content-detail-label">Year:</span>
+            <span class="content-detail-value">${content.year || ""}</span>
+          </div>
+          <div class="content-detail-item">
+            <span class="content-detail-label">Category:</span>
+            <span class="content-detail-value">${escapeHtml(content.category || "")}</span>
+          </div>
+          <div class="content-detail-item">
+            <span class="content-detail-label">Info:</span>
+            <span class="content-detail-value">${escapeHtml(content.info || "")}</span>
+          </div>
+        </div>
+        ${hasActors ? `
+          <div class="content-actors-section">
+            <h3 class="actors-title">Cast</h3>
+            <div class="actors-list">
+              ${actors.map(actor => {
+                const name = actor?.name || "";
+                const url = actor?.wikipediaUrl || "#";
+                return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="actor-link">${escapeHtml(name)}</a>`;
+              }).join("")}
+            </div>
+          </div>
+        ` : `<div class="content-actors-section"><p style="color: #b3b3b3; font-size: 0.9rem;">No cast information available.</p></div>`}
+      </div>
+    `;
+
+    elements.episodesModalBody.innerHTML = infoHtml;
+  }
+
+  function renderMovieActions(content) {
+    if (!content || !elements.episodesModalBody) return;
+
+    const progress = state.progressMap.get(content.id);
+    const actionsHtml = `
+      <div class="movie-actions">
+        <button class="movie-play-btn episode-play-btn" data-content-id="${content.id}">
+          <i class="bi bi-play-fill me-2"></i>${progress ? "Resume" : "Play"}
+        </button>
+        ${progress && progress.watchPercentage > 0 ? `
+          <button class="movie-watch-from-beginning-btn watch-from-beginning-btn" data-content-id="${content.id}">
+            <i class="bi bi-arrow-clockwise me-1"></i>Watch from Beginning
+          </button>
+        ` : ""}
+      </div>
+    `;
+
+    elements.episodesModalBody.insertAdjacentHTML("beforeend", actionsHtml);
+
+    // Add event handlers
+    const playBtn = elements.episodesModalBody.querySelector(".movie-play-btn");
+    if (playBtn) {
+      playBtn.addEventListener("click", () => {
+        closeEpisodesModal();
+        handlePlay(content.id);
+      });
+    }
+
+    const watchFromBeginningBtn = elements.episodesModalBody.querySelector(".movie-watch-from-beginning-btn");
+    if (watchFromBeginningBtn) {
+      watchFromBeginningBtn.addEventListener("click", () => {
+        closeEpisodesModal();
+        handlePlayFromBeginning(content.id);
+      });
+    }
+  }
+
+  function closeEpisodesModal() {
+    if (elements.episodesModal) {
+      elements.episodesModal.style.display = "none";
+      elements.episodesModalBody.innerHTML = '<div class="episodes-loading">Loading episodes...</div>';
+    }
+  }
+
+  function renderEpisodes(episodes, content) {
+    if (!episodes || episodes.length === 0 || !elements.episodesModalBody) return;
+
+    // Group episodes by season
+    const seasons = {};
+    episodes.forEach((episode) => {
+      const season = episode.season || 1;
+      if (!seasons[season]) {
+        seasons[season] = [];
+      }
+      seasons[season].push(episode);
+    });
+
+    // Sort seasons
+    const sortedSeasons = Object.keys(seasons).sort((a, b) => Number(a) - Number(b));
+
+    let html = `<div class="episodes-section">`;
+    sortedSeasons.forEach((seasonNum) => {
+      html += `<div class="episodes-seasons">`;
+      html += `<h3 class="season-header">Season ${seasonNum}</h3>`;
+      html += `<div class="episodes-list">`;
+
+      seasons[seasonNum].forEach((episode) => {
+        const episodeId = episode._id?.toString() || episode.id;
+        const episodeNumber = episode.episode || 0;
+        const episodeTitle = episode.title || `Episode ${episodeNumber}`;
+        const episodeDescription = episode.description || "";
+        const duration = formatTime(episode.durationSec || 0);
+        const airDate = episode.airDate
+          ? new Date(episode.airDate).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : "";
+
+        html += `
+          <div class="episode-item" data-episode-id="${episodeId}" data-content-id="${content.id}">
+            <div class="episode-number">${episodeNumber}</div>
+            <div class="episode-info">
+              <div class="episode-title">${escapeHtml(episodeTitle)}</div>
+              <div class="episode-meta">
+                ${duration ? `<span>${duration}</span>` : ""}
+                ${airDate ? `<span>${airDate}</span>` : ""}
+              </div>
+              ${episodeDescription ? `<div class="episode-description">${escapeHtml(episodeDescription)}</div>` : ""}
+            </div>
+            <button class="episode-play-btn" data-episode-id="${episodeId}" data-content-id="${content.id}">
+              <i class="bi bi-play-fill me-1"></i>Play
+            </button>
+          </div>
+        `;
+      });
+
+      html += `</div></div>`;
+    });
+    html += `</div>`;
+
+    elements.episodesModalBody.insertAdjacentHTML("beforeend", html);
+
+    // Add click handlers for episodes
+    elements.episodesModalBody.querySelectorAll(".episode-play-btn, .episode-item").forEach((element) => {
+      element.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const episodeId = element.dataset.episodeId || element.closest(".episode-item")?.dataset.episodeId;
+        const contentId = element.dataset.contentId || element.closest(".episode-item")?.dataset.contentId;
+        if (episodeId && contentId) {
+          handleEpisodePlay(contentId, episodeId);
+        }
+      });
+    });
+  }
+
+  async function handleEpisodePlay(contentId, episodeId) {
+    try {
+      // Get episode details to get duration
+      const episodesResponse = await fetch(`/api/content/${contentId}/episodes`);
+      if (!episodesResponse.ok) {
+        throw new Error("Failed to get episode details");
+      }
+
+      const episodes = await episodesResponse.json();
+      const episode = episodes.find((e) => (e._id?.toString() || e.id) === episodeId);
+
+      if (!episode) {
+        throw new Error("Episode not found");
+      }
+
+      // Create progress entry for this episode
+      const payload = {
+        contentId,
+        episodeId,
+        lastPositionSec: 0,
+        durationSec: episode.durationSec || 0,
+        watchPercentage: 0,
+        status: "in_progress",
+        event: "start",
+      };
+
+      const progressResponse = await fetch(`/api/profiles/${state.profileId}/progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!progressResponse.ok) {
+        throw new Error(`Progress update failed: ${progressResponse.status}`);
+      }
+
+      const result = await progressResponse.json();
+      const updated = result.progress;
+
+      // Update state
+      if (updated?.content) {
+        state.progressMap.set(updated.content.id, updated);
+        const list = state.sections.continueWatching || [];
+        const idx = list.findIndex((entry) => entry.content?.id === updated.content.id);
+        if (idx >= 0) {
+          list[idx] = updated;
+        } else {
+          list.unshift(updated);
+        }
+        state.sections.continueWatching = list;
+        buildIndices();
+        renderSections();
+      }
+
+      // Close modal and show alert
+      closeEpisodesModal();
+      alert(`Starting ${episode.title || "episode"}...`);
+    } catch (error) {
+      console.error("Failed to play episode:", error);
+      alert("Unable to start playback. Please try again.");
+    }
   }
 });
 
