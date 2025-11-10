@@ -1,23 +1,33 @@
-// middleware/uploadMiddleware.js
-const multer = require('multer');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
+const multer = require("multer");
 
-// Ensure these folders exist: 'public/uploads/images' and 'public/uploads/videos'
+const ensureDir = (dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    let uploadPath = 'public/';
-    if (file.fieldname === 'posterImage' || file.fieldname === 'backdropImage') {
-      uploadPath += 'images/';
-    } else if (file.fieldname === 'videoFile') {
-      uploadPath += 'videos/';
+    let subFolder = "";
+    if (file.fieldname === "posterImage" || file.fieldname === "backdropImage") {
+      subFolder = "uploads/images";
+    } else if (file.fieldname === "videoFile") {
+      subFolder = "uploads/videos";
+    } else {
+      subFolder = "uploads/other";
     }
-    cb(null, uploadPath);
+
+    const absolutePath = path.join(__dirname, "..", "public", subFolder);
+    ensureDir(absolutePath);
+    cb(null, absolutePath);
   },
   filename: (req, file, cb) => {
-    // Create a unique filename
-    cb(null, Date.now() + '-' + file.originalname);
-  }
+    const cleanName = file.originalname.replace(/\s+/g, "-");
+    cb(null, `${Date.now()}-${cleanName}`);
+  },
 });
 
-const upload = multer({ storage: storage });
-module.exports = upload;
+module.exports = multer({ storage });
+// middleware/uploadMiddleware.js

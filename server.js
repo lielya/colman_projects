@@ -34,10 +34,23 @@ async function startServer() {
       cookie: { secure: false } // Set to true if using HTTPS
     }));
 
-    // Request logging middleware
+    // Request logging middleware (skip static asset noise)
+    const logIgnorePatterns = [
+      /^\/images\//,
+      /^\/uploads\//,
+      /^\/videos\//,
+      /^\/favicon\.ico$/,
+      /^\/.*\.js$/,
+      /^\/.*\.css$/
+    ];
     app.use((req, res, next) => {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] ${req.method} ${req.url}`);
+      const shouldIgnore = logIgnorePatterns.some((pattern) =>
+        pattern.test(req.path || "")
+      );
+      if (!shouldIgnore) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] ${req.method} ${req.url}`);
+      }
       next();
     });
 

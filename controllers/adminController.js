@@ -15,9 +15,16 @@ const createContent = async (req, res) => {
       if (!req.files) {
         return res.status(400).send('No files were uploaded.');
       }
-      const posterPath = req.files.posterImage ? req.files.posterImage[0].path : null;
-      const backdropPath = req.files.backdropImage ? req.files.backdropImage[0].path : null;
-      const videoPath = req.files.videoFile ? req.files.videoFile[0].path : null;
+      const toPublicPath = (file) => {
+        if (!file || !file.path) return null;
+        return file.path
+          .replace(/\\/g, '/')
+          .replace(/^.*public\//, '/');
+      };
+
+      const posterPath = toPublicPath(req.files.posterImage && req.files.posterImage[0]);
+      const backdropPath = toPublicPath(req.files.backdropImage && req.files.backdropImage[0]);
+      const videoPath = toPublicPath(req.files.videoFile && req.files.videoFile[0]);
   
       if (!posterPath || !backdropPath || !videoPath) {
           return res.status(400).send('Missing one or more required files.');
@@ -63,8 +70,14 @@ const createContent = async (req, res) => {
   // --- 👆 End of the new logic 👆 ---
   
       // 3. Build Actors Array
-      const actorNames = req.body.actors_names.split('\n').map(name => name.trim()).filter(Boolean);
-      const actorUrls = req.body.actors_urls.split('\n').map(url => url.trim()).filter(Boolean);
+      const actorNames = (req.body.actors_names || '')
+        .split('\n')
+        .map(name => name.trim())
+        .filter(Boolean);
+      const actorUrls = (req.body.actors_urls || '')
+        .split('\n')
+        .map(url => url.trim())
+        .filter(Boolean);
       const actors = [];
       for (let i = 0; i < actorNames.length; i++) {
         if (actorNames[i] && actorUrls[i]) {
@@ -92,14 +105,28 @@ const createContent = async (req, res) => {
       });
   
       await newContent.save();
-      res.redirect('/main.html'); // Redirect to main page on success
+
+      // If request was sent via fetch (Accept: application/json), respond with JSON
+      if (req.headers.accept && req.headers.accept.includes('application/json')) {
+        return res.json({
+          message: 'Content added successfully',
+          contentId: newContent._id,
+          redirect: '/'
+        });
+      }
+
+      res.redirect('/'); // Redirect for standard form submission
   
     } catch (error) {
       console.error('Error creating content:', error);
       if (error.code === 11000) { // Handle duplicate 'id' error
         return res.status(400).send('Error: A content item with this ID already exists.');
       }
-      res.status(500).send('Server error');
+      if (req.headers.accept && req.headers.accept.includes('application/json')) {
+        res.status(500).json({ error: 'Server error' });
+      } else {
+        res.status(500).send('Server error');
+      }
     }
   };
 

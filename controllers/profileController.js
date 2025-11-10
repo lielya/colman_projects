@@ -254,9 +254,10 @@ const mapProgressEntry = (item, likeMap = null) => {
 };
 
 const buildContinueWatching = async (profileId, limit = 12) => {
-  const items = await Progress.find({
+  const rawItems = await Progress.find({
     profileId,
-    watchPercentage: { $lt: 95 },
+    status: { $ne: "done" },
+    watchPercentage: { $gt: 0, $lt: 95 },
   })
     .sort({ updatedAt: -1 })
     .limit(limit)
@@ -266,7 +267,21 @@ const buildContinueWatching = async (profileId, limit = 12) => {
     ])
     .lean();
 
-  const contentIds = items
+  // Ensure uniqueness per content (latest progress first due to sorting)
+  const uniqueItems = [];
+  const seenContent = new Set();
+  for (const item of rawItems) {
+    const contentId =
+      item?.contentId?._id?.toString?.() || item?.contentId?.toString?.();
+    if (!contentId || seenContent.has(contentId)) {
+      continue;
+    }
+    seenContent.add(contentId);
+    uniqueItems.push(item);
+    if (uniqueItems.length >= limit) break;
+  }
+
+  const contentIds = uniqueItems
     .map((item) =>
       item?.contentId?._id?.toString?.() || item?.contentId?.toString?.()
     )
@@ -274,7 +289,9 @@ const buildContinueWatching = async (profileId, limit = 12) => {
 
   const likeMap = await buildGlobalLikeMap(contentIds);
 
-  return items.map((item) => mapProgressEntry(item, likeMap)).filter(Boolean);
+  return uniqueItems
+    .map((item) => mapProgressEntry(item, likeMap))
+    .filter(Boolean);
 };
 
 const buildRecommendations = async (profileId, options = {}) => {

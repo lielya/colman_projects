@@ -135,7 +135,7 @@
 <body>
     
     <div class="admin-container">
-        <img src="/images/netflix-logo-full.png" alt="Netflix Logo" class="logo">
+        <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix Logo" class="logo">
         <h1>Add New Content</h1>
 
         <form id="addContentForm" enctype="multipart/form-data">
@@ -255,6 +255,9 @@
             try {
                 const response = await fetch('/admin/add-content', {
                     method: 'POST',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
                     body: formData
                 });
 
@@ -287,7 +290,7 @@
                     submitButton.textContent = 'Add Content';
 
                     setTimeout(() => {
-                        window.location.href = '/main.html'; 
+                        window.location.href = result.redirect || '/';
                     }, 2000); 
                 } else {
                     // אם זה היה JSON אבל עם שגיאה (כמו "Unique ID already exists")
