@@ -114,6 +114,20 @@ document.addEventListener("DOMContentLoaded", () => {
       const name = state.profile.name || "Viewer";
       elements.welcome.textContent = `Hello, ${name}`;
       localStorage.setItem("selectedProfileName", name);
+
+      console.log("Checking admin status...");
+      console.log("Profile name is:", name); 
+
+      if (name.toLowerCase() === "admin") {
+        console.log("Admin detected! Trying to show elements.");
+        
+        const adminElements = document.querySelectorAll('.admin-only');
+        console.log("Found elements:", adminElements); 
+        
+        adminElements.forEach(el => {
+          el.style.display = 'list-item';
+        });
+      }
     }
 
     if (elements.avatar) {
@@ -128,9 +142,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (elements.logout) {
       elements.logout.addEventListener("click", (event) => {
         event.preventDefault();
-  localStorage.clear();
-  window.location.href = "/login";
-});
+        localStorage.clear();
+        window.location.href = "/login";
+      });
     }
   }
 

@@ -5,7 +5,7 @@ function isAuthenticated(req, res, next) {
   if (req.session && req.session.user) {
     return next(); // User is authenticated, proceed
   }
-  res.status(401).redirect('/login.html'); 
+  res.status(401).redirect('/login'); 
 }
 
 // Middleware to check if the user is an admin

@@ -5,7 +5,7 @@ const path = require('path');
 // Ensure these folders exist: 'public/uploads/images' and 'public/uploads/videos'
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    let uploadPath = 'public/uploads/';
+    let uploadPath = 'public/';
     if (file.fieldname === 'posterImage' || file.fieldname === 'backdropImage') {
       uploadPath += 'images/';
     } else if (file.fieldname === 'videoFile') {
