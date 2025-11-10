@@ -1496,6 +1496,10 @@ document.addEventListener("DOMContentLoaded", () => {
             <span class="content-detail-value">${escapeHtml(content.category || "")}</span>
           </div>
           <div class="content-detail-item">
+            <span class="content-detail-label">Rating:</span>
+            <span class="content-detail-value">${escapeHtml(content.rating || 'N/A')}</span>
+          </div>
+          <div class="content-detail-item">
             <span class="content-detail-label">Info:</span>
             <span class="content-detail-value">${escapeHtml(content.info || "")}</span>
           </div>

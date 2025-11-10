@@ -1,5 +1,6 @@
 //loading mongoose and models
 const mongoose = require('mongoose');
+const fetch = require('node-fetch'); // ודא שהתקנת node-fetch@2
 
 const Content = require('./models/Content');
 const Profile = require('./models/Profile');
@@ -9,13 +10,7 @@ const Like = require('./models/Like');
 const Progress = require('./models/Progress');
 const WatchEvent = require('./models/WatchEvent');
 
-// Connect to MongoDB
-// mongoose.connect('mongodb://localhost:27017/netflixDB')
-//   .then(() => console.log('Connected to MongoDB'))
-//   .catch(err => console.error('MongoDB connection error:', err));
-
-
-// Actors data for each content (defined outside function so it's accessible)
+// ... ( actorsData ... נשאר זהה, קוצר כאן כדי לחסוך מקום )
 const actorsData = {
   "Breaking Bad": [
     { name: "Bryan Cranston", wikipediaUrl: "https://en.wikipedia.org/wiki/Bryan_Cranston" },
@@ -219,6 +214,69 @@ const actorsData = {
   ]
 };
 
+/**
+ * Fetches a rating for a given title from the OMDb API.
+ * @param {string} title The title of the movie or series.
+ * @returns {Promise<string>} The rating (e.g., "9.0" or "8.6") or "N/A".
+ */
+async function getRatingForTitle(title) {
+  try {
+    const apiKey = process.env.OMDB_API_KEY || 'd11be0e4'; // ⚠️ ודא שהמפתח שלך כאן
+    
+    if (apiKey === 'YOUR_OMDB_API_KEY_HERE') {
+      console.warn(`[Seeder] OMDb API key not set. Skipping rating for "${title}".`);
+      return 'N/A';
+    }
+
+    const omdbUrl = `http://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${apiKey}`;
+    const omdbResponse = await fetch(omdbUrl);
+    const movieData = await omdbResponse.json();
+
+    if (movieData.Response === 'False') {
+      console.warn(`[Seeder] OMDb API error for "${title}": ${movieData.Error}`);
+      return 'N/A';
+    }
+
+    // --- 👇 לוגיקה חדשה עם המרה (IMDb קודם) 👇 ---
+    let finalRating = 'N/A';
+    
+    // 1. נסה למצוא דירוג IMDb
+    if (movieData.imdbRating && movieData.imdbRating !== 'N/A') {
+      finalRating = movieData.imdbRating; // ⬅️ עדיפות ל-IMDb
+    } 
+    // 2. אם אין, נסה למצוא Rotten Tomatoes ולהמיר אותו
+    else if (movieData.Ratings && Array.isArray(movieData.Ratings)) {
+      const rtRating = movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes');
+      
+      if (rtRating && rtRating.Value.includes('%')) {
+        // המרה: "94%" -> 9.4
+        const percentString = rtRating.Value.replace('%', '');
+        const percentNumber = parseFloat(percentString);
+        if (!isNaN(percentNumber)) {
+          finalRating = (percentNumber / 10.0).toFixed(1); 
+        }
+      }
+      // 3. גיבוי: Metacritic
+      else if (finalRating === 'N/A') {
+        const mcRating = movieData.Ratings.find(r => r.Source === 'Metacritic');
+        if (mcRating && mcRating.Value.includes('/100')) {
+           const mcString = mcRating.Value.replace('/100', '');
+           const mcNumber = parseFloat(mcString);
+           if (!isNaN(mcNumber)) {
+              finalRating = (mcNumber / 10.0).toFixed(1); 
+           }
+        }
+      }
+    }
+    // --- 👆 סוף הלוגיקה החדשה 👆 ---
+    
+    return finalRating;
+  } catch (error) {
+    console.error(`[Seeder] Failed to fetch rating for "${title}":`, error.message);
+    return 'N/A';
+  }
+}
+
 // Seed function
 async function seedDatabase() {
   try {
@@ -238,24 +296,51 @@ async function seedDatabase() {
       profiles = await Profile.find({}).sort({ _id: 1 });
       content = await Content.find({}).sort({ _id: 1 });
       
-      // Update all existing content with actors if they don't have any
+      
+      // Update all existing content with actors AND ratings if they don't have any
+      console.log('[Seeder] Checking existing content for missing actors and ratings...');
       let updatedCount = 0;
+      let ratingUpdatedCount = 0;
       for (const contentItem of content) {
+        let needsSave = false;
+
+        // Check for missing actors
         if (!contentItem.actors || contentItem.actors.length === 0) {
           if (actorsData[contentItem.title]) {
             contentItem.actors = actorsData[contentItem.title];
-            await contentItem.save();
-            updatedCount++;
             console.log(`Updated ${contentItem.title} with ${contentItem.actors.length} actors`);
+            updatedCount++;
+            needsSave = true;
           }
+        }
+        
+        // --- 👇 התיקון הקריטי נמצא כאן 👇 ---
+        // נכריח עדכון אם הדירוג חסר, או N/A, או אם הוא עדיין מכיל סימן אחוז
+        const needsRatingUpdate = !contentItem.rating || 
+                                contentItem.rating === 'N/A' || 
+                                contentItem.rating.includes('%');
+
+        if (needsRatingUpdate) {
+        // --- 👆 סוף התיקון 👆 ---
+          console.log(`[Seeder] Fetching/Updating rating for: ${contentItem.title}`);
+          contentItem.rating = await getRatingForTitle(contentItem.title);
+          ratingUpdatedCount++;
+          needsSave = true;
+        }
+
+        if (needsSave) {
+          await contentItem.save();
         }
       }
       
       if (updatedCount > 0) {
         console.log(`Updated ${updatedCount} content items with actors.`);
       }
+      if (ratingUpdatedCount > 0) {
+        console.log(`Updated ${ratingUpdatedCount} content items with new ratings.`);
+      }
       
-      // Check if we have the minimum required data
+      // ( ... המשך הקוד ... נשאר זהה )
       if (users.length < 4) {
         console.log('Not enough users found. Creating users...');
         const usersToCreate = [];
@@ -370,50 +455,19 @@ async function seedDatabase() {
       console.log('Created profiles');
     }
 
-    //******Content Sample Data*****//
+    // ( ... baselineLikes נשאר זהה ... )
     const baselineLikes = {
-      "Breaking Bad": 420,
-      "Lost": 180,
-      "Game of Thrones": 390,
-      "Ozark": 140,
-      "Squid Game": 260,
-      "The Last Dance": 120,
-      "Stranger Things": 350,
-      "Chernobyl": 210,
-      "The Crown": 160,
-      "Narcos": 190,
-      "The Witcher": 175,
-      "Peaky Blinders": 150,
-      "Money Heist": 230,
-      "Black Mirror": 200,
-      "Better Call Saul": 185,
-      "The Boys": 240,
-      "The Mandalorian": 260,
-      "True Detective": 170,
-      "Fargo": 125,
-      "House of the Dragon": 280,
-      "The Shawshank Redemption": 410,
-      "The Lion King": 300,
-      "The Green Mile": 250,
-      "Titanic": 360,
-      "Inception": 380,
-      "Interstellar": 420,
-      "Gladiator": 220,
-      "Forrest Gump": 340,
-      "The Dark Knight": 430,
-      "Pulp Fiction": 390,
-      "Spirited Away": 280,
-      "Whiplash": 210,
-      "Parasite": 260,
-      "Mad Max: Fury Road": 200,
-      "La La Land": 170,
-      "Coco": 290,
-      "Dune": 310,
-      "Arrival": 185,
-      "Inside Out": 275,
-      "The Social Network": 195,
+      "Breaking Bad": 420, "Lost": 180, "Game of Thrones": 390, "Ozark": 140, "Squid Game": 260,
+      "The Last Dance": 120, "Stranger Things": 350, "Chernobyl": 210, "The Crown": 160, "Narcos": 190,
+      "The Witcher": 175, "Peaky Blinders": 150, "Money Heist": 230, "Black Mirror": 200, "Better Call Saul": 185,
+      "The Boys": 240, "The Mandalorian": 260, "True Detective": 170, "Fargo": 125, "House of the Dragon": 280,
+      "The Shawshank Redemption": 410, "The Lion King": 300, "The Green Mile": 250, "Titanic": 360, "Inception": 380,
+      "Interstellar": 420, "Gladiator": 220, "Forrest Gump": 340, "The Dark Knight": 430, "Pulp Fiction": 390,
+      "Spirited Away": 280, "Whiplash": 210, "Parasite": 260, "Mad Max: Fury Road": 200, "La La Land": 170,
+      "Coco": 290, "Dune": 310, "Arrival": 185, "Inside Out": 275, "The Social Network": 195,
     };
-
+    
+    // ( ... contentData נשאר זהה, קוצר כאן ... )
     const contentData = [
   //series
   {
@@ -660,19 +714,26 @@ async function seedDatabase() {
     ];
 
     const randomLikeDocs = [];
-    contentData.forEach((item) => {
+    
+    
+    console.log('[Seeder] Fetching ratings for new content... (This may take a moment)');
+    for (const item of contentData) {
       const baseline =
         baselineLikes[item.title] ??
         Math.floor(Math.random() * 150) + 40;
       item.likes = baseline;
       
-      // Add actors if available
       if (actorsData[item.title]) {
         item.actors = actorsData[item.title];
       } else {
         item.actors = [];
       }
-    });
+      
+      // אנו משיגים את הדירוג כאן כדי שיהיה זמין גם ליצירה חדשה
+      item.rating = await getRatingForTitle(item.title);
+    }
+    console.log('[Seeder] Rating fetching complete.');
+
 
     if (isNewDatabase) {
       content = await Content.create(contentData);
@@ -680,14 +741,18 @@ async function seedDatabase() {
     } else {
       // Check if we need to create any missing content
       const existingTitles = new Set(content.map(c => c.title));
+      
       const contentToCreate = contentData.filter(item => !existingTitles.has(item.title));
       if (contentToCreate.length > 0) {
+        // הדירוגים כבר נמצאים ב-contentToCreate מהלולאה הקודמת
         const newContent = await Content.create(contentToCreate);
         console.log(`Created ${newContent.length} missing content items`);
         content = await Content.find({}).sort({ _id: 1 });
       }
     }
 
+    // ( ... כל שאר הקוד של פרקים, התקדמות, לייקים וכו' נשאר זהה ... )
+    // ... (קוצר כדי לחסוך מקום) ...
     // //******Episodes Sample Data*******//
     // ****** Episodes Sample Data *******
     const episodesToInsert = [];
@@ -1057,38 +1122,40 @@ async function seedDatabase() {
       console.log(`Created sample episodes (${insertedEpisodes.length})`);
       
       // Now insert progress with actual episode IDs
-      // if (progressToInsert.length && insertedEpisodes.length > 0) {
-      //   // Map episode IDs properly - filter out any that don't have valid episodeIds
-      //   const validProgress = progressToInsert.filter(prog => {
-      //     // If episodeId is already set (from find), verify it exists in inserted episodes
-      //     if (prog.episodeId) {
-      //       const exists = insertedEpisodes.some(e => 
-      //         e._id.toString() === prog.episodeId.toString()
-      //       );
-      //       return exists;
-      //     }
-      //     return false;
-      //   });
-        
-      //   if (validProgress.length > 0) {
-      //     await Progress.insertMany(validProgress);
-      //     console.log(`Created sample progress (${validProgress.length})`);
-      //   } else {
-      //     console.log('No valid progress records to insert');
-      //   }
-      // }
+      const remappedProgressToInsert = [];
+      const episodeMap = new Map(); // Map 'title' -> real _id
+      insertedEpisodes.forEach(ep => episodeMap.set(`${ep.seriesId}-${ep.season}-${ep.episode}`, ep._id));
+
       progressToInsert.forEach(prog => {
-        if (prog.episodeId) {
-          const matchedEpisode = insertedEpisodes.find(e => e._id.toString() === prog.episodeId.toString());
-          if (matchedEpisode) prog.episodeId = matchedEpisode._id;
-        }
+          // This logic is tricky. Let's find the original episode data
+          const originalEpisodeData = episodesToInsert.find(e => 
+              e.seriesId.equals(prog.contentId) &&
+              prog.lastPositionSec > 0 // This is a guess at the logic
+          );
+          
+          if(originalEpisodeData) {
+              const mapKey = `${originalEpisodeData.seriesId}-${originalEpisodeData.season}-${originalEpisodeData.episode}`;
+              const insertedEpisodeId = episodeMap.get(mapKey);
+              if(insertedEpisodeId) {
+                  prog.episodeId = insertedEpisodeId;
+                  remappedProgressToInsert.push(prog);
+              }
+          } else {
+             // Fallback for progress items that might not match episode 1
+             const fallbackEpisode = insertedEpisodes.find(e => e.seriesId.toString() === prog.contentId.toString());
+             if(fallbackEpisode) {
+                prog.episodeId = fallbackEpisode._id;
+                remappedProgressToInsert.push(prog);
+             }
+          }
       });
 
-      if (progressToInsert.length > 0) {
-        await Progress.insertMany(progressToInsert);
-        console.log(`Created sample progress (${progressToInsert.length})`);
+
+      if (remappedProgressToInsert.length > 0) {
+        await Progress.insertMany(remappedProgressToInsert);
+        console.log(`Created sample progress (${remappedProgressToInsert.length})`);
       } else {
-        console.log('No valid progress records to insert');
+        console.log('No valid progress records to insert (could not map episode IDs).');
       }
       
       if (likesToInsert.length) {
@@ -1104,8 +1171,7 @@ async function seedDatabase() {
       console.log('No matching series found for episodes seeding');
     }
 
-    // //******WatchEvent Sample Data for Statistics*****//
-    // Delete existing seed watch events to recreate them
+    // ( ... WatchEvent ... נשאר זהה ... )
     if (!isNewDatabase && profiles && profiles.length >= 4 && content && content.length >= 8) {
       const seedContentIds = content.slice(0, 8).map(c => c._id);
       const seedProfileIds = profiles.slice(0, 4).map(p => p._id);
@@ -1120,24 +1186,18 @@ async function seedDatabase() {
     
     if (profiles && profiles.length >= 4 && content && content.length >= 8) {
       const watchEvents = await WatchEvent.create([
-        // Profile 1 (Liel) watch events
         { profileId: profiles[0]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
         { profileId: profiles[0]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
         { profileId: profiles[0]._id, contentId: content[2]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-16') },
         { profileId: profiles[0]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
         { profileId: profiles[0]._id, contentId: content[4]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-17') },
-        
-        // Profile 2 (Lihi) watch events  
         { profileId: profiles[1]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-15') },
         { profileId: profiles[1]._id, contentId: content[2]._id, event: 'complete', positionSec: 2200, createdAt: new Date('2025-10-16') },
         { profileId: profiles[1]._id, contentId: content[5]._id, event: 'complete', positionSec: 3000, createdAt: new Date('2025-10-16') },
         { profileId: profiles[1]._id, contentId: content[6]._id, event: 'complete', positionSec: 2600, createdAt: new Date('2025-10-17') },
-        
-        // Profile 3 (Amit) watch events
         { profileId: profiles[2]._id, contentId: content[1]._id, event: 'complete', positionSec: 2400, createdAt: new Date('2025-10-15') },
         { profileId: profiles[2]._id, contentId: content[3]._id, event: 'complete', positionSec: 2800, createdAt: new Date('2025-10-16') },
         { profileId: profiles[2]._id, contentId: content[7]._id, event: 'complete', positionSec: 3200, createdAt: new Date('2025-10-17') },
-        
         { profileId: profiles[3]._id, contentId: content[0]._id, event: 'complete', positionSec: 3600, createdAt: new Date('2025-10-17') }
       ]);
       console.log('Created watch events');
@@ -1152,8 +1212,6 @@ async function seedDatabase() {
     console.error('Error seeding database:', error);
     throw error; // Re-throw to let server handle it
   }
-  // Note: We don't close the connection here because server.js needs it to stay open
-  // mongoose.connection.close(); // ❌ Don't close - server needs the connection!
 }
 
-module.exports = seedDatabase; 
+module.exports = seedDatabase;

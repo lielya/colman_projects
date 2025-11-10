@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add New Content</title>
+  </head>
+<body>
+  <div class="container">
+    <h2>Add New Content (Admin)</h2>
+    
+    <form id="addContentForm" action="/admin/add-content" method="POST" enctype="multipart/form-data">
+
+      <div class="mb-3">
+        <label for="id" class="form-label">Unique ID:</label>
+        <input type="text" class="form-control" id="id" name="id" required>
+      </div>
+
+      <div class="mb-3">
+        <label for="title" class="form-label">Content Title:</label>
+        <input type="text" class="form-control" id="title" name="title" required>
+      </div>
+
+      <div class="mb-3">
+        <label for="type" class="form-label">Type:</label>
+        <select class="form-select" id="type" name="type" required>
+          <option value="movie">Movie</option>
+          <option value="series">Series</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label for="year" class="form-label">Release Year:</label>
+        <input type="number" class="form-control" id="year" name="year" required>
+      </div>
+
+      <div class="mb-3">
+        <label for="category" class="form-label">Category (Genre):</label>
+        <input type="text" class="form-control" id="category" name="category" required>
+      </div>
+      
+      <div class="mb-3">
+        <label for="director" class="form-label">Director:</label>
+        <input type="text" class="form-control" id="director" name="director">
+      </div>
+
+      <div class="mb-3">
+        <label for="info" class="form-label">Info (Summary):</label>
+        <textarea class="form-control" id="info" name="info" rows="3" required></textarea>
+      </div>
+
+      <hr>
+
+      <div class="mb-3">
+        <label for="actors_names" class="form-label">Actor Names (one per line):</label>
+        <textarea class="form-control" id="actors_names" name="actors_names" rows="3"></textarea>
+      </div>
+
+      <div class="mb-3">
+        <label for="actors_urls" class="form-label">Actor Wikipedia URLs (one per line, in same order):</label>
+        <textarea class="form-control" id="actors_urls" name="actors_urls" rows="3"></textarea>
+      </div>
+
+      <hr>
+
+      <div class="mb-3">
+        <label for="posterImage" class="form-label">Poster Image:</label>
+        <input type="file" class="form-control" id="posterImage" name="posterImage" accept="image/*" required>
+      </div>
+
+      <div class="mb-3">
+        <label for="backdropImage" class="form-label">Backdrop Image:</label>
+        <input type="file" class="form-control" id="backdropImage" name="backdropImage" accept="image/*" required>
+      </div>
+
+      <div class="mb-3">
+        <label for="videoFile" class="form-label">Video File (MP4):</label>
+        <input type="file" class="form-control" id="videoFile" name="videoFile" accept="video/mp4" required>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Add Content</button>
+    </form>
+  </div>
+</body>
+</html>
