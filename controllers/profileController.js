@@ -8,9 +8,23 @@ const WatchEvent = require("../models/WatchEvent");
 
 const ensureAssetPath = (value) => {
   if (!value || typeof value !== "string") return "";
-  if (/^https?:\/\//i.test(value)) return value;
-  if (value.startsWith("/")) return value;
-  return `/${value.replace(/^\.?\//, "")}`;
+
+  let normalized = value.trim();
+  if (!normalized) return "";
+
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+
+  normalized = normalized.replace(/\\/g, "/");
+  normalized = normalized.replace(/^(\.\.\/)+/, "");
+  normalized = normalized.replace(/^\.\//, "");
+  normalized = normalized.replace(/^public\//i, "");
+  normalized = normalized.replace(/^\/?public\//i, "");
+
+  if (!normalized.startsWith("/")) {
+    normalized = `/${normalized}`;
+  }
+
+  return normalized.replace(/\/{2,}/g, "/");
 };
 
 // --- 👇 התיקון נמצא כאן 👇 ---
@@ -34,6 +48,7 @@ const mapContent = (doc, likeMap = null) => {
     category: doc.category,
     poster: ensureAssetPath(doc.poster),
     backdrop: ensureAssetPath(doc.backdrop),
+    videoUrl: ensureAssetPath(doc.videoUrl),
     info: doc.info,
     likes: totalLikes,
     rating: doc.rating || 'N/A', // <-- הוספנו את השורה הזו
@@ -242,11 +257,13 @@ const mapProgressEntry = (item, likeMap = null) => {
           title: item.episodeId.title,
           season: item.episodeId.season,
           number: item.episodeId.episode,
+          videoUrl: ensureAssetPath(item.episodeId.videoUrl),
+          durationSec: item.episodeId.durationSec || 0,
         }
       : null,
     lastPositionSec: item.lastPositionSec || 0,
     resumePositionSec,
-    durationSec: item.durationSec || 0,
+    durationSec: item.durationSec || item.episodeId?.durationSec || 0,
     watchPercentage: item.watchPercentage || 0,
     status: item.status,
     updatedAt: item.updatedAt,
@@ -262,8 +279,11 @@ const buildContinueWatching = async (profileId, limit = 12) => {
     .sort({ updatedAt: -1 })
     .limit(limit)
     .populate([
-      { path: "contentId" }, // <-- populate ישלוף את כל מסמך התוכן
-      { path: "episodeId", select: "title season episode" },
+      { path: "contentId" },
+      {
+        path: "episodeId",
+        select: "title season episode videoUrl durationSec",
+      },
     ])
     .lean();
 
@@ -446,13 +466,13 @@ exports.createProfile = async (req, res) => {
       message: "Profile created successfully",
       profile: {
         id: profile._id.toString(),
-        name: profile.name,
-        avatar: profile.avatar,
+      name: profile.name,
+      avatar: profile.avatar,
       },
     });
   } catch (error) {
     console.error("Create profile error:", error);
-
+    
     if (error.code === 11000) {
       return res
         .status(409)
@@ -781,7 +801,10 @@ exports.upsertProgress = async (req, res) => {
     })
       .populate([
         { path: "contentId" },
-        { path: "episodeId", select: "title season episode" },
+        {
+          path: "episodeId",
+          select: "title season episode videoUrl durationSec",
+        },
       ])
       .lean();
 

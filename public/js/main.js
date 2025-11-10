@@ -39,6 +39,12 @@ document.addEventListener("DOMContentLoaded", () => {
     episodesModalTitle: document.getElementById("episodesModalTitle"),
     episodesModalInfo: document.getElementById("episodesModalInfo"),
     episodesModalBody: document.getElementById("episodesModalBody"),
+    playerModal: document.getElementById("playerModal"),
+    playerOverlay: document.getElementById("playerOverlay"),
+    playerClose: document.getElementById("playerClose"),
+    playerVideo: document.getElementById("playerVideo"),
+    playerTitle: document.getElementById("playerTitle"),
+    playerSubtitle: document.getElementById("playerSubtitle"),
   };
 
   const state = {
@@ -65,12 +71,42 @@ document.addEventListener("DOMContentLoaded", () => {
     searchResults: [],
     isLoading: false,
     genrePagination: {}, // Track pagination state for each genre: { genre: { page: 1, hasMore: true, loading: false } }
+    player: {
+      isOpen: false,
+      contentId: null,
+      episodeId: null,
+      currentPosition: 0,
+      durationSec: 0,
+      lastSyncTime: 0,
+      syncInFlight: false,
+      suppressSync: false,
+      subtitleBase: "",
+    },
   };
 
   const CARD_GAP = 12;
   const MIN_LOOP_ITEMS = 8;
 
   let searchTimer = null;
+
+  async function ensureContentHydrated(contentId) {
+    if (!contentId) return null;
+    const existing = state.contentById.get(contentId);
+    if (existing && existing.videoUrl) return existing;
+    try {
+      const response = await fetch(`/api/content/${contentId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to load content ${contentId}: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data && data.id) {
+        return storeContentRecord(data);
+      }
+    } catch (error) {
+      console.error("Failed to hydrate content:", error);
+    }
+    return existing || null;
+  }
 
   init().catch((err) => {
     console.error("Failed to initialise main view:", err);
@@ -92,6 +128,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     renderSections();
     bindEvents();
+    initPlayerControls();
   }
 
   async function loadFeed() {
@@ -157,32 +194,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const genreSet = new Set();
 
     const registerContent = (content) => {
-      if (!content || !content.id) return;
-      const existing = state.contentById.get(content.id) || {};
-      const merged = {
-        ...existing,
-        ...content,
-      };
-
-      merged.poster = normalizeAsset(merged.poster || existing.poster || "");
-      merged.backdrop = normalizeAsset(merged.backdrop || existing.backdrop || "");
-      merged.category = merged.category || existing.category || "General";
-      merged.type = merged.type || existing.type || "movie";
-      merged.info = merged.info || existing.info || "";
-      merged.likes =
-        typeof merged.likes === "number"
-          ? merged.likes
-          : typeof existing.likes === "number"
-          ? existing.likes
-          : 0;
-      merged.totalLikes = merged.likes;
-      merged.score = merged.score || existing.score || 0;
-      merged.completions = merged.completions || existing.completions || 0;
-      merged.actors = merged.actors || existing.actors || [];
-
-      state.contentById.set(content.id, merged);
-
-      if (merged.category && merged.category !== "General") {
+      const merged = storeContentRecord(content);
+      if (merged && merged.category && merged.category !== "General") {
         genreSet.add(merged.category);
       }
     };
@@ -550,10 +563,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function mergeContent(content) {
     if (!content || !content.id) return content;
-    const stored = state.contentById.get(content.id);
-    if (stored) return stored;
-    state.contentById.set(content.id, content);
-    return content;
+    return storeContentRecord(content);
   }
 
   function cardHTML(card, options = {}) {
@@ -772,6 +782,325 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function initPlayerControls() {
+    if (!elements.playerModal || !elements.playerVideo) return;
+
+    const video = elements.playerVideo;
+    const closeTargets = [elements.playerClose, elements.playerOverlay];
+
+    closeTargets.forEach((target) => {
+      if (target) {
+        target.addEventListener("click", () => {
+          closePlayer().catch((error) =>
+            console.error("Failed to close player:", error)
+          );
+        });
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && state.player.isOpen) {
+        closePlayer().catch((error) =>
+          console.error("Failed to close player:", error)
+        );
+      }
+    });
+
+    video.addEventListener("loadedmetadata", () => {
+      if (!state.player.isOpen) return;
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      if (duration > 0) {
+        state.player.durationSec = duration;
+      }
+      if (state.player.currentPosition > 0 && duration > 0) {
+        const safeStart = Math.min(
+          state.player.currentPosition,
+          Math.max(duration - 1, 0)
+        );
+        try {
+          video.currentTime = safeStart;
+        } catch (err) {
+          console.warn("Unable to set resume point:", err);
+        }
+      }
+      updatePlayerTimeDisplay();
+    });
+
+    video.addEventListener("timeupdate", () => {
+      if (!state.player.isOpen) return;
+      state.player.currentPosition = Number.isFinite(video.currentTime)
+        ? video.currentTime
+        : 0;
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      if (duration > 0) {
+        state.player.durationSec = duration;
+      }
+      updatePlayerTimeDisplay();
+
+      const now = Date.now();
+      if (now - state.player.lastSyncTime > 15000) {
+        syncPlayerProgress("tick");
+      }
+    });
+
+    video.addEventListener("pause", () => {
+      if (!state.player.isOpen) return;
+      if (state.player.suppressSync) {
+        state.player.suppressSync = false;
+        return;
+      }
+      if (Number.isFinite(video.currentTime) && video.currentTime > 0.5) {
+        syncPlayerProgress("pause");
+      }
+    });
+
+    video.addEventListener("ended", () => {
+      if (!state.player.isOpen) return;
+      state.player.suppressSync = true;
+      syncPlayerProgress("ended")
+        .catch((error) => console.error("Failed to complete playback:", error))
+        .finally(() => {
+          closePlayer({ skipSync: true }).catch((error) =>
+            console.error("Failed to close player:", error)
+          );
+        });
+    });
+  }
+
+  function openPlayer(content, options = {}) {
+    if (!content || !elements.playerModal || !elements.playerVideo) return;
+
+    const episode = options.episode || null;
+    const resumeFrom = Math.max(0, options.resumeFrom || 0);
+    const videoSource = normalizeAsset(
+      options.videoUrl ||
+        episode?.videoUrl ||
+        content.videoUrl ||
+        ""
+    );
+
+    if (!videoSource) {
+      alert("No video is available for this title yet. Please try a different one.");
+      return;
+    }
+
+    const subtitleParts = [];
+    if (episode?.title) {
+      subtitleParts.push(episode.title);
+    }
+    if (typeof episode?.season === "number" && typeof episode?.number === "number") {
+      subtitleParts.push(`S${episode.season} · E${episode.number}`);
+    } else if (content.category) {
+      subtitleParts.push(content.category);
+    }
+
+    state.player.isOpen = true;
+    state.player.contentId = content.id;
+    state.player.episodeId = episode?.id || options.episodeId || null;
+    state.player.currentPosition = resumeFrom;
+    state.player.durationSec =
+      options.durationSec ||
+      episode?.durationSec ||
+      state.player.durationSec ||
+      0;
+    state.player.lastSyncTime = Date.now();
+    state.player.syncInFlight = false;
+    state.player.subtitleBase = subtitleParts.join(" • ");
+    state.player.suppressSync = false;
+
+    if (elements.playerTitle) {
+      elements.playerTitle.textContent = content.title || "";
+    }
+    updatePlayerTimeDisplay();
+
+    elements.playerModal.style.display = "flex";
+    elements.playerModal.classList.add("show");
+    elements.playerModal.setAttribute("aria-hidden", "false");
+
+    const video = elements.playerVideo;
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    video.poster = content.backdrop || content.poster || "";
+    video.src = videoSource;
+    video.load();
+
+    const handleAutoplay = () => {
+      video.play().catch((err) => {
+        console.warn("Autoplay prevented; user interaction required.", err);
+      });
+    };
+
+    if (video.readyState >= 1) {
+      if (resumeFrom > 0) {
+        try {
+          video.currentTime = resumeFrom;
+        } catch (err) {
+          console.warn("Unable to set resume point:", err);
+        }
+      }
+      handleAutoplay();
+    } else {
+      video.addEventListener(
+        "loadeddata",
+        () => {
+          if (resumeFrom > 0) {
+            try {
+              const duration = Number.isFinite(video.duration)
+                ? video.duration
+                : 0;
+              const safeStart =
+                duration > 0
+                  ? Math.min(resumeFrom, Math.max(duration - 1, 0))
+                  : resumeFrom;
+              video.currentTime = safeStart;
+            } catch (err) {
+              console.warn("Unable to set resume point:", err);
+            }
+          }
+          handleAutoplay();
+        },
+        { once: true }
+      );
+    }
+  }
+
+  async function closePlayer(options = {}) {
+    const { skipSync = false } = options;
+    if (!state.player.isOpen) return;
+
+    if (!skipSync) {
+      try {
+        await syncPlayerProgress("close");
+      } catch (error) {
+        console.error("Failed to sync progress on close:", error);
+      }
+    }
+
+    state.player.isOpen = false;
+    state.player.contentId = null;
+    state.player.episodeId = null;
+    state.player.currentPosition = 0;
+    state.player.durationSec = 0;
+    state.player.lastSyncTime = 0;
+    state.player.syncInFlight = false;
+    state.player.subtitleBase = "";
+    state.player.suppressSync = false;
+
+    if (elements.playerModal) {
+      elements.playerModal.classList.remove("show");
+      elements.playerModal.style.display = "none";
+      elements.playerModal.setAttribute("aria-hidden", "true");
+    }
+
+    if (elements.playerVideo) {
+      const video = elements.playerVideo;
+      video.pause();
+      video.removeAttribute("src");
+      video.removeAttribute("poster");
+      video.load();
+    }
+
+    if (elements.playerTitle) {
+      elements.playerTitle.textContent = "";
+    }
+    if (elements.playerSubtitle) {
+      elements.playerSubtitle.textContent = "";
+    }
+  }
+
+  async function syncPlayerProgress(reason = "tick") {
+    if (!state.player.isOpen || !state.player.contentId) return null;
+    if (!elements.playerVideo) return null;
+
+    const video = elements.playerVideo;
+    const position = Number.isFinite(video.currentTime)
+      ? video.currentTime
+      : 0;
+    const duration =
+      (Number.isFinite(video.duration) && video.duration > 0
+        ? video.duration
+        : state.player.durationSec) || 0;
+
+    if (reason === "tick") {
+      const now = Date.now();
+      if (now - state.player.lastSyncTime < 10000) return null;
+    }
+
+    if (state.player.syncInFlight) return null;
+    if (position <= 0 && reason !== "ended") return null;
+
+    const payload = {
+      contentId: state.player.contentId,
+      episodeId: state.player.episodeId,
+      lastPositionSec: Math.round(position),
+      durationSec: Math.round(duration),
+      status: reason === "ended" ? "done" : "in_progress",
+      event:
+        reason === "ended"
+          ? "complete"
+          : reason === "pause" || reason === "close"
+          ? "pause"
+          : "progress",
+    };
+
+    state.player.syncInFlight = true;
+    try {
+      const updated = await persistProgress(payload, {
+        silent: reason === "tick",
+      });
+      state.player.lastSyncTime = Date.now();
+      if (updated?.durationSec) {
+        state.player.durationSec = updated.durationSec;
+      }
+      return updated;
+    } catch (error) {
+      console.error("Failed to sync playback progress:", error);
+      return null;
+    } finally {
+      state.player.syncInFlight = false;
+    }
+  }
+
+  function updatePlayerTimeDisplay() {
+    if (!elements.playerSubtitle) return;
+    const meta = [];
+    if (state.player.subtitleBase) {
+      meta.push(state.player.subtitleBase);
+    }
+    if (state.player.durationSec > 0) {
+      meta.push(
+        `${formatTime(state.player.currentPosition || 0)} / ${formatTime(
+          state.player.durationSec
+        )}`
+      );
+    }
+    elements.playerSubtitle.textContent = meta.join(" • ");
+  }
+
+  function normalizeEpisodeData(rawEpisode) {
+    if (!rawEpisode) return null;
+    const id =
+      rawEpisode._id?.toString?.() ||
+      rawEpisode.id ||
+      rawEpisode.episodeId ||
+      null;
+    return {
+      id,
+      title: rawEpisode.title || "",
+      season:
+        typeof rawEpisode.season === "number"
+          ? rawEpisode.season
+          : Number(rawEpisode.season) || null,
+      number:
+        typeof rawEpisode.episode === "number"
+          ? rawEpisode.episode
+          : Number(rawEpisode.number) || null,
+      videoUrl: normalizeAsset(rawEpisode.videoUrl || ""),
+      durationSec: rawEpisode.durationSec || 0,
+    };
+  }
+
   async function performSearch(query) {
     state.isLoading = true;
     try {
@@ -831,9 +1160,70 @@ document.addEventListener("DOMContentLoaded", () => {
       const contentId = card.dataset.id;
       const content = state.contentById.get(contentId);
       if (content) {
+        renderHero(content);
         // Open content modal for both series and movies
     openContentModal(content);
       }
+    }
+  }
+
+  async function persistProgress(payload, options = {}) {
+    const { silent = false } = options;
+    const body = { ...payload };
+
+    if (
+      typeof body.watchPercentage === "undefined" &&
+      typeof body.lastPositionSec === "number" &&
+      typeof body.durationSec === "number" &&
+      body.durationSec > 0
+    ) {
+      body.watchPercentage = Math.min(
+        100,
+        Math.max(0, Math.round((body.lastPositionSec / body.durationSec) * 100))
+      );
+    }
+
+    const response = await fetch(
+      `/api/profiles/${state.profileId}/progress`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Progress update failed with status ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (result?.progress) {
+      applyProgressUpdate(result.progress, { silent });
+      return result.progress;
+    }
+    return null;
+  }
+
+  function applyProgressUpdate(progressEntry, options = {}) {
+    if (!progressEntry?.content?.id) return;
+    const { silent = false } = options;
+
+    state.progressMap.set(progressEntry.content.id, progressEntry);
+
+    const list = state.sections.continueWatching || [];
+    const idx = list.findIndex(
+      (entry) => entry.content?.id === progressEntry.content.id
+    );
+    if (idx >= 0) {
+      list[idx] = progressEntry;
+    } else {
+      list.unshift(progressEntry);
+    }
+    state.sections.continueWatching = list;
+
+    if (!silent) {
+      buildIndices();
+      renderSections();
     }
   }
 
@@ -928,52 +1318,63 @@ document.addEventListener("DOMContentLoaded", () => {
     const content = state.contentById.get(contentId);
     if (!content) return;
 
-    const progress = state.progressMap.get(contentId);
-    const payload = {
-      contentId,
-      episodeId: progress?.episode?.id,
-      lastPositionSec: progress?.resumePositionSec || 0,
-      durationSec: progress?.durationSec || 0,
-      status: "in_progress",
-      event: "start",
-    };
-
     try {
-      const response = await fetch(
-        `/api/profiles/${state.profileId}/progress`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`Progress update failed with status ${response.status}`);
-      }
-      const result = await response.json();
-      const updated = result.progress;
-      if (updated?.content) {
-        state.progressMap.set(updated.content.id, updated);
-        const list = state.sections.continueWatching || [];
-        const idx = list.findIndex((entry) => entry.content?.id === updated.content.id);
-        if (idx >= 0) {
-          list[idx] = updated;
-        } else {
-          list.unshift(updated);
-        }
-        state.sections.continueWatching = list;
-        buildIndices();
-        renderSections();
+      renderHero(content);
+      const progress = state.progressMap.get(contentId);
+      const lastPosition = progress?.lastPositionSec || 0;
+      const durationSec = progress?.durationSec || 0;
+      const payload = {
+        contentId,
+        episodeId: progress?.episode?.id || null,
+        lastPositionSec: lastPosition,
+        durationSec,
+        status: "in_progress",
+        event: "start",
+      };
+
+      const updated = await persistProgress(payload);
+      const resumeEntry = updated || progress || null;
+
+      const resumeFrom =
+        resumeEntry?.resumePositionSec ??
+        Math.max(
+          (resumeEntry?.lastPositionSec ||
+            progress?.lastPositionSec ||
+            0) - 10,
+          0
+        );
+
+      const episode = resumeEntry?.episode || progress?.episode || null;
+      let videoUrl =
+        episode?.videoUrl ||
+        content.videoUrl ||
+        "";
+
+      if (!videoUrl) {
+        const hydrated = await ensureContentHydrated(content.id);
+        videoUrl =
+          episode?.videoUrl ||
+          hydrated?.videoUrl ||
+          "";
       }
 
-      const resume = progress?.resumePositionSec || 0;
-      alert(
-        resume > 0
-          ? `Resuming ${content.title} from ${formatTime(resume)}.`
-          : `Playing ${content.title}...`
-      );
+      if (!videoUrl) {
+        alert("No video is available for this title yet. Please try a different one.");
+        return;
+      }
+
+      const effectiveDuration =
+        resumeEntry?.durationSec || progress?.durationSec || 0;
+
+      openPlayer(content, {
+        resumeFrom,
+        durationSec: effectiveDuration,
+        episode,
+        videoUrl,
+      });
     } catch (error) {
-      console.error("Failed to update progress:", error);
+      console.error("Failed to start playback:", error);
+      alert("Unable to start playback right now. Please try again later.");
     }
   }
 
@@ -982,78 +1383,69 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!content) return;
 
     try {
-      let episodeId = null;
-      let durationSec = 0;
+      renderHero(content);
+      let episode = null;
 
-      // For series, get the first episode (season 1, episode 1)
       if (content.type === "series") {
-        const response = await fetch(
-          `/api/content/${contentId}/first-episode`
-        );
-        if (response.ok) {
-          const firstEpisode = await response.json();
-          episodeId = firstEpisode.id;
-          durationSec = firstEpisode.durationSec || 0;
-        } else {
-          console.warn("Could not find first episode for series:", contentId);
-          // Continue without episodeId - the backend will handle it
+        try {
+          const response = await fetch(
+            `/api/content/${contentId}/first-episode`
+          );
+          if (response.ok) {
+            const firstEpisode = await response.json();
+            episode = normalizeEpisodeData(firstEpisode);
+          } else if (response.status !== 404) {
+            console.warn("Could not load first episode:", response.status);
+          }
+        } catch (error) {
+          console.warn("Failed to fetch first episode:", error);
         }
       }
 
-      // Reset progress to beginning (position 0)
       const payload = {
         contentId,
-        episodeId: episodeId || null,
+        episodeId: episode?.id || null,
         lastPositionSec: 0,
-        durationSec: durationSec || 0,
+        durationSec: episode?.durationSec || 0,
         watchPercentage: 0,
         status: "in_progress",
         event: "start",
       };
 
-      const progressResponse = await fetch(
-        `/api/profiles/${state.profileId}/progress`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
+      const updated = await persistProgress(payload);
 
-      if (!progressResponse.ok) {
-        throw new Error(
-          `Progress update failed with status ${progressResponse.status}`
-        );
+      const durationSec =
+        updated?.durationSec || episode?.durationSec || 0;
+      const episodeForPlayer =
+        (updated?.episode && {
+          ...updated.episode,
+          videoUrl: updated.episode.videoUrl || episode?.videoUrl || "",
+        }) ||
+        episode ||
+        null;
+
+      let videoUrl =
+        episodeForPlayer?.videoUrl || content.videoUrl || "";
+
+      if (!videoUrl) {
+        const hydrated = await ensureContentHydrated(content.id);
+        videoUrl =
+          episodeForPlayer?.videoUrl ||
+          hydrated?.videoUrl ||
+          "";
       }
 
-      const result = await progressResponse.json();
-      const updated = result.progress;
-      if (updated?.content) {
-        state.progressMap.set(updated.content.id, updated);
-        const list = state.sections.continueWatching || [];
-        const idx = list.findIndex(
-          (entry) => entry.content?.id === updated.content.id
-        );
-        if (idx >= 0) {
-          list[idx] = updated;
-        } else {
-          list.unshift(updated);
-        }
-        state.sections.continueWatching = list;
-        buildIndices();
-        renderSections();
-        
-        // Update hero if this content is currently displayed
-        const heroContentId = elements.heroPlay?.dataset.contentId;
-        if (heroContentId === contentId) {
-          renderHero(content);
-        }
+      if (!videoUrl) {
+        alert("No video is available for this title yet. Please try a different one.");
+        return;
       }
 
-      const episodeInfo = content.type === "series" && episodeId
-        ? " from the first episode"
-        : "";
-      alert(`Starting ${content.title}${episodeInfo} from the beginning...`);
+      openPlayer(content, {
+        resumeFrom: 0,
+        durationSec,
+        episode: episodeForPlayer,
+        videoUrl,
+      });
     } catch (error) {
       console.error("Failed to start from beginning:", error);
       alert("Unable to start playback from the beginning. Please try again.");
@@ -1400,9 +1792,52 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function normalizeAsset(value) {
     if (!value || typeof value !== "string") return "";
-    if (/^https?:\/\//i.test(value)) return value;
-    if (value.startsWith("/")) return value;
-    return `/${value.replace(/^\.?\//, "")}`;
+
+    let normalized = value.trim();
+    if (!normalized) return "";
+
+    if (/^https?:\/\//i.test(normalized)) return normalized;
+
+    normalized = normalized.replace(/\\/g, "/");
+    normalized = normalized.replace(/^(\.\.\/)+/, "");
+    normalized = normalized.replace(/^\.\//, "");
+    normalized = normalized.replace(/^public\//i, "");
+    normalized = normalized.replace(/^\/?public\//i, "");
+
+    if (!normalized.startsWith("/")) {
+      normalized = `/${normalized}`;
+    }
+
+    return normalized.replace(/\/{2,}/g, "/");
+  }
+
+  function storeContentRecord(incoming) {
+    if (!incoming || !incoming.id) return null;
+    const existing = state.contentById.get(incoming.id) || {};
+    const merged = {
+      ...existing,
+      ...incoming,
+    };
+
+    merged.poster = normalizeAsset(merged.poster || existing.poster || "");
+    merged.backdrop = normalizeAsset(merged.backdrop || existing.backdrop || "");
+    merged.videoUrl = normalizeAsset(merged.videoUrl || existing.videoUrl || "");
+    merged.category = merged.category || existing.category || "General";
+    merged.type = merged.type || existing.type || "movie";
+    merged.info = merged.info || existing.info || "";
+    merged.likes =
+      typeof merged.likes === "number"
+        ? merged.likes
+        : typeof existing.likes === "number"
+        ? existing.likes
+        : 0;
+    merged.totalLikes = merged.likes;
+    merged.score = merged.score || existing.score || 0;
+    merged.completions = merged.completions || existing.completions || 0;
+    merged.actors = merged.actors || existing.actors || [];
+
+    state.contentById.set(incoming.id, merged);
+    return merged;
   }
 
   function formatNumber(value) {
@@ -1452,9 +1887,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const apiContent = await response.json();
         if (apiContent) {
           // Merge API data with existing data
-          fullContent = { ...fullContent, ...apiContent };
-          // Update state
-          state.contentById.set(content.id, fullContent);
+          fullContent =
+            storeContentRecord({ ...fullContent, ...apiContent }) ||
+            { ...fullContent, ...apiContent };
         }
       }
     } catch (error) {
@@ -1699,61 +2134,74 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function handleEpisodePlay(contentId, episodeId) {
     try {
-      // Get episode details to get duration
       const episodesResponse = await fetch(`/api/content/${contentId}/episodes`);
       if (!episodesResponse.ok) {
         throw new Error("Failed to get episode details");
       }
 
       const episodes = await episodesResponse.json();
-      const episode = episodes.find((e) => (e._id?.toString() || e.id) === episodeId);
+      const episodeRaw = episodes.find(
+        (e) => (e._id?.toString() || e.id) === episodeId
+      );
 
-      if (!episode) {
+      if (!episodeRaw) {
         throw new Error("Episode not found");
       }
 
-      // Create progress entry for this episode
+      const normalizedEpisode = normalizeEpisodeData(episodeRaw);
+
       const payload = {
         contentId,
-        episodeId,
+        episodeId: normalizedEpisode?.id || episodeId,
         lastPositionSec: 0,
-        durationSec: episode.durationSec || 0,
+        durationSec: normalizedEpisode?.durationSec || 0,
         watchPercentage: 0,
         status: "in_progress",
         event: "start",
       };
 
-      const progressResponse = await fetch(`/api/profiles/${state.profileId}/progress`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const updated = await persistProgress(payload);
 
-      if (!progressResponse.ok) {
-        throw new Error(`Progress update failed: ${progressResponse.status}`);
-      }
+      const content = state.contentById.get(contentId);
+      if (content) {
+        renderHero(content);
+        const episodeForPlayer =
+          (updated?.episode && {
+            ...updated.episode,
+            videoUrl:
+              updated.episode.videoUrl || normalizedEpisode?.videoUrl || "",
+          }) ||
+          normalizedEpisode;
 
-      const result = await progressResponse.json();
-      const updated = result.progress;
+        let videoUrl =
+          episodeForPlayer?.videoUrl ||
+          content.videoUrl ||
+          normalizedEpisode?.videoUrl ||
+          "";
 
-      // Update state
-      if (updated?.content) {
-        state.progressMap.set(updated.content.id, updated);
-        const list = state.sections.continueWatching || [];
-        const idx = list.findIndex((entry) => entry.content?.id === updated.content.id);
-        if (idx >= 0) {
-          list[idx] = updated;
-        } else {
-          list.unshift(updated);
+        if (!videoUrl) {
+          const hydrated = await ensureContentHydrated(content.id);
+          videoUrl =
+            episodeForPlayer?.videoUrl ||
+            hydrated?.videoUrl ||
+            normalizedEpisode?.videoUrl ||
+            "";
         }
-        state.sections.continueWatching = list;
-        buildIndices();
-        renderSections();
-      }
 
-      // Close modal and show alert
-      closeEpisodesModal();
-      alert(`Starting ${episode.title || "episode"}...`);
+        if (!videoUrl) {
+          alert("No video is available for this title yet. Please try a different one.");
+          return;
+        }
+
+        closeEpisodesModal();
+        openPlayer(content, {
+          resumeFrom: 0,
+          durationSec:
+            updated?.durationSec || normalizedEpisode?.durationSec || 0,
+          episode: episodeForPlayer,
+          videoUrl,
+        });
+      }
     } catch (error) {
       console.error("Failed to play episode:", error);
       alert("Unable to start playback. Please try again.");

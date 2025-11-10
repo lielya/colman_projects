@@ -243,6 +243,36 @@
   .admin-only {
     display: none; 
   }
+
+    /* Player modal */
+    .player-modal{
+      position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+      background:rgba(0,0,0,0.92); backdrop-filter:blur(3px); z-index:3000;
+    }
+    .player-modal.show{ display:flex; }
+    .player-overlay{ position:absolute; inset:0; }
+    .player-wrapper{
+      position:relative; width:min(90vw, 1100px); aspect-ratio:16 / 9;
+      background:#000; border-radius:12px; overflow:hidden;
+      box-shadow:0 30px 80px rgba(0,0,0,0.85);
+    }
+    .player-video{
+      width:100%; height:100%; background:#000; object-fit:cover;
+    }
+    .player-close{
+      position:absolute; top:12px; right:12px; width:40px; height:40px;
+      border:none; border-radius:50%; background:rgba(0,0,0,0.6); color:#fff;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; z-index:2; transition:background 0.2s ease;
+    }
+    .player-close:hover{ background:rgba(0,0,0,0.8); }
+    .player-meta{
+      position:absolute; left:0; right:0; bottom:0; padding:18px 24px;
+      background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 100%);
+      color:#fff;
+    }
+    .player-meta h3{ margin:0 0 6px; font-size:1.2rem; }
+    .player-meta p{ margin:0; font-size:0.9rem; color:#d0d0d0; }
   </style>
 </head>
 <body>
@@ -353,6 +383,21 @@
       </div>
       <div class="episodes-modal-body" id="episodesModalBody">
         <div class="episodes-loading">Loading episodes...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Player Modal -->
+  <div id="playerModal" class="player-modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div id="playerOverlay" class="player-overlay"></div>
+    <div class="player-wrapper">
+      <button id="playerClose" class="player-close" aria-label="Close player">
+        <i class="bi bi-x-lg"></i>
+      </button>
+      <video id="playerVideo" class="player-video" preload="auto" controls></video>
+      <div class="player-meta">
+        <h3 id="playerTitle"></h3>
+        <p id="playerSubtitle"></p>
       </div>
     </div>
   </div>
