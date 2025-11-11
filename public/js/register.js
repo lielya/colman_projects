@@ -70,11 +70,12 @@ document.getElementById('registerForm').addEventListener('submit', async functio
         const data = await response.json();
         
         if (response.ok) {
-            // Registration successful
-            showSuccessMessage('Registration successful! Redirecting to login...');
-            setTimeout(() => {
-                window.location.href = '/login?registered=true';
-            }, 2000);
+            if (data.user && data.user.id) {
+                localStorage.setItem('isLoggedIn', 'true');
+                localStorage.setItem('userId', data.user.id);
+            }
+            window.location.href = '/';
+            return;
         } else {
             // Handle server errors
             if (data.details && Array.isArray(data.details)) {
