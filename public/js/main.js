@@ -68,6 +68,68 @@ document.addEventListener("DOMContentLoaded", () => {
     genrePagination: {}, 
   };
 
+  // --- Playback label helpers ---
+  const REWATCH_THRESHOLD = 95;
+
+  function computeWatchPercentage(progress) {
+    if (!progress) return 0;
+    if (typeof progress.watchPercentage === "number") return Math.max(0, Math.min(100, progress.watchPercentage));
+    const last = Number(progress.lastPositionSec || 0);
+    const dur = Number(progress.durationSec || 0);
+    if (!dur || dur <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round((last / dur) * 100)));
+  }
+
+  function isRewatch(progress) {
+    return computeWatchPercentage(progress) >= REWATCH_THRESHOLD;
+  }
+
+  function getPlayLabel(progress) {
+    const pct = computeWatchPercentage(progress);
+    if (pct >= REWATCH_THRESHOLD) return "Rewatch";
+    if (pct > 0) return "Resume";
+    return "Play";
+  }
+
+  function refreshPlayButtonsFor(contentId) {
+    try {
+      const progress = state.progressMap.get(contentId) || null;
+      const rewatch = isRewatch(progress);
+
+      if (elements.heroPlay && elements.heroPlay.dataset.contentId === String(contentId)) {
+        if (elements.heroPlay.textContent !== "View Episodes") {
+          elements.heroPlay.textContent = getPlayLabel(progress);
+        }
+      }
+      if (elements.heroWatchFromBeginning && elements.heroWatchFromBeginning.dataset.contentId === String(contentId)) {
+        elements.heroWatchFromBeginning.style.display = progress && !rewatch && computeWatchPercentage(progress) > 0 ? "inline-block" : "none";
+      }
+
+      if (elements.episodesModalBody) {
+        elements.episodesModalBody.querySelectorAll(`[data-content-id="${contentId}"].movie-play-btn, .movie-play-btn[data-content-id="${contentId}"]`).forEach(btn => {
+          btn.textContent = getPlayLabel(progress);
+        });
+        elements.episodesModalBody.querySelectorAll(`.resume-btn[data-content-id="${contentId}"]`).forEach(btn => {
+          btn.textContent = getPlayLabel(progress);
+        });
+        elements.episodesModalBody.querySelectorAll(`.watch-from-beginning-btn[data-content-id="${contentId}"]`).forEach(btn => {
+          btn.style.display = rewatch ? "none" : "";
+        });
+      }
+
+      if (elements.sections) {
+        elements.sections.querySelectorAll(`[data-id="${contentId}"] .resume-btn`).forEach(btn => {
+          btn.textContent = getPlayLabel(progress);
+        });
+        elements.sections.querySelectorAll(`[data-id="${contentId}"] .watch-from-beginning-btn`).forEach(btn => {
+          btn.style.display = rewatch ? "none" : "";
+        });
+      }
+    } catch (e) {
+      console.error("refreshPlayButtonsFor error:", e);
+    }
+  }
+
   let searchTimer = null;
 
   let allEpisodes = [];
@@ -269,11 +331,13 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.heroPlay.dataset.resume = progress?.resumePositionSec || 0;
     elements.heroPlay.dataset.duration = progress?.durationSec || 0;
     elements.heroPlay.dataset.episodeId = progress?.episode?.id || "";
-    elements.heroPlay.textContent = stored.type === "series" ? "View Episodes" : (progress ? "Resume" : "Play");
+    elements.heroPlay.textContent = stored.type === "series" ? "View Episodes" : getPlayLabel(progress);
     elements.heroPlay.onclick = () => openContentModal(stored);
 
     if (elements.heroWatchFromBeginning) {
-      if (progress && progress.watchPercentage > 0) {
+      const pct = progress ? (progress.watchPercentage || (progress.durationSec ? (progress.lastPositionSec / progress.durationSec) * 100 : 0)) : 0;
+      const rewatch = progress ? isRewatch(progress) : false;
+      if (progress && pct > 0 && !rewatch) {
         elements.heroWatchFromBeginning.style.display = "inline-block";
         elements.heroWatchFromBeginning.dataset.contentId = stored.id;
         elements.heroWatchFromBeginning.onclick = () => handlePlayFromBeginning(stored.id);
@@ -465,11 +529,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     elements.sections.appendChild(sectionEl);
 
-    // This logic is no longer needed because we are not doing a cyclic scroll
-    // if (cards.length > 0 && strip.dataset.isCircular === "true") {
-    //   ...
-    // }
-
     bindArrows(viewportId);
     
     if (options.infiniteScroll && options.genre) {
@@ -606,7 +665,6 @@ document.addEventListener("DOMContentLoaded", () => {
       )
     );
     
-    // תיקון: ודא ש-resumePositionSec קיים
     const resumeLabel = formatTime(progress.resumePositionSec || progress.lastPositionSec || 0);
 
     return `
@@ -618,13 +676,13 @@ document.addEventListener("DOMContentLoaded", () => {
         <button class="resume-btn btn btn-sm btn-light" data-content-id="${
           progress.content.id
         }" data-progress-id="${progress.id}">
-          Resume
+          ${getPlayLabel(progress)}
         </button>
-        <button class="watch-from-beginning-btn btn btn-sm" data-content-id="${
+        ${!isRewatch(progress) ? `<button class="watch-from-beginning-btn btn btn-sm" data-content-id="${
           progress.content.id
         }">
           <i class="bi bi-arrow-clockwise me-1"></i>Watch from Beginning
-        </button>
+        </button>` : ``}
       </div>
     `;
   }
@@ -877,13 +935,22 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!content) return;
 
     const progress = state.progressMap.get(contentId);
+
+    if (isRewatch(progress)) {
+      if (content.type === 'series') {
+        await handlePlayFromBeginning(contentId);
+      } else {
+        startPlayback(content, null, 0);
+      }
+      return;
+    }
+
     const startTime = progress ? progress.resumePositionSec : 0;
-    
     if (content.type === 'movie') {
-      startPlayback(content, null, startTime); 
+      startPlayback(content, null, startTime);
     } else {
       const episodeId = progress ? progress.episode?.id : null;
-      startPlayback(content, episodeId, startTime); 
+      startPlayback(content, episodeId, startTime);
     }
   }
 
@@ -926,21 +993,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const next = section.querySelector(".arrow-btn.next");
     const strip = viewport.querySelector(".carousel-strip");
 
-    // Function to calculate the scroll amount (one "page")
     const page = () => {
       const firstCard = strip?.querySelector('.media-card');
       if (firstCard) {
-        const cardWidth = firstCard.offsetWidth + 12; // 12 is the gap
-        // Scroll by 7 cards (like in your CSS)
+        const cardWidth = firstCard.offsetWidth + 12;
         return cardWidth * 7; 
       }
-      // Fallback to viewport width
       return viewport.clientWidth;
     };
 
-    // Function to update the disabled state of the buttons
     const updateDisabled = () => {
-      // Use a small tolerance (e.g., 5px) for calculations
       const tolerance = 5;
       const scrollLeft = viewport.scrollLeft;
       const scrollWidth = viewport.scrollWidth;
@@ -958,12 +1020,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (prev) {
       prev.addEventListener("click", () => {
         const scrollAmount = -page();
-        // scrollBy will use the 'scroll-behavior: smooth' from the CSS
         viewport.scrollBy({ left: scrollAmount }); 
-        
-        // We use setTimeout to wait for the smooth scroll animation
-        // to finish before updating the button states.
-        setTimeout(updateDisabled, 500); // 500ms should be enough
+        setTimeout(updateDisabled, 500);
       });
     }
 
@@ -975,18 +1033,13 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Update buttons on initial load
-    // Use setTimeout to run this *after* the browser has rendered
     setTimeout(updateDisabled, 100);
 
-    // Update buttons on manual scroll
     viewport.addEventListener("scroll", () => {
-      // Use a timeout to avoid running this function too many times
       clearTimeout(scrollTimeout);
       scrollTimeout = setTimeout(updateDisabled, 150);
     }, { passive: true });
     
-    // Update buttons if the window is resized
     if (window.ResizeObserver) {
       new ResizeObserver(updateDisabled).observe(viewport);
     }
@@ -1012,13 +1065,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const scrollWidth = viewport.scrollWidth;
         const clientWidth = viewport.clientWidth;
         
-        // Check if we are near the end of the scroll
         const scrollPercentage = (scrollLeft + clientWidth) / scrollWidth;
 
         const pagination = state.genrePagination[genre];
         if (pagination && pagination.hasMore && !pagination.loading) {
-          
-          // Since it's not circular, we just check if we are near the end
           if (scrollPercentage > 0.7) { 
             isLoading = true;
             loadMoreGenreContent(genre, viewportId).finally(() => {
@@ -1092,8 +1142,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const viewport = document.getElementById(viewportId);
       if (viewport) {
         const strip = viewport.querySelector(".carousel-strip");
-        
-        // Since it's not circular, we just append the new cards
         const cards = newItems.map((item) => {
           const merged = mergeContent(item);
           return cardHTML(
@@ -1106,8 +1154,6 @@ document.addEventListener("DOMContentLoaded", () => {
           );
         });
         strip.innerHTML += cards.join("");
-        
-        // Update the button state after adding new content
         bindArrows(viewportId); 
       }
     } catch (error) {
@@ -1210,18 +1256,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fullContent.category) metaParts.push(fullContent.category);
     elements.episodesModalInfo.textContent = metaParts.join(" · ") || "";
 
-    // --- 👇 התיקון מתחיל כאן 👇 ---
     const modalHeader = elements.episodesModal.querySelector(".episodes-modal-header");
-
-    // 1. נקה כפתור עריכה ישן (אם קיים)
     const oldEditBtn = modalHeader.querySelector('.admin-edit-button');
     if (oldEditBtn) {
       oldEditBtn.remove();
     }
 
-    // 2. בדוק אם המשתמש הוא אדמין
     if (state.profile.name.toLowerCase() === 'admin') {
-      // 3. צור את כפתור העריכה עם הקישור הנכון (בלי .html)
       const editButtonHtml = `
         <div class="admin-edit-button">
             <a href="/admin/add-content?edit=${fullContent.id}" class="btn btn-outline-light">
@@ -1229,10 +1270,8 @@ document.addEventListener("DOMContentLoaded", () => {
             </a>
         </div>
       `;
-      // 4. הזרק את הכפתור לתוך ה-header
       modalHeader.insertAdjacentHTML('beforeend', editButtonHtml);
     }
-    // --- 👆 סוף התיקון 👆 ---
 
     elements.episodesModal.style.display = "flex";
 
@@ -1338,9 +1377,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const actionsHtml = `
       <div class="movie-actions">
         <button class="movie-play-btn episode-play-btn" data-content-id="${content.id}">
-          <i class="bi bi-play-fill me-2"></i>${progress ? "Resume" : "Play"}
+          <i class="bi bi-play-fill me-2"></i>${getPlayLabel(progress)}
         </button>
-        ${progress && progress.watchPercentage > 0 ? `
+        ${progress && !isRewatch(progress) ? `
           <button class="movie-watch-from-beginning-btn watch-from-beginning-btn" data-content-id="${content.id}">
             <i class="bi bi-arrow-clockwise me-1"></i>Watch from Beginning
           </button>
@@ -1352,10 +1391,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const playBtn = elements.episodesModalBody.querySelector(".movie-play-btn");
     if (playBtn) {
-      playBtn.addEventListener("click", () => {
+      playBtn.addEventListener("click", async () => {
         closeEpisodesModal();
-        const startTime = progress ? progress.resumePositionSec : 0;
-        startPlayback(content, null, startTime);
+        if (isRewatch(progress)) {
+          if (content.type === "series") {
+            await handlePlayFromBeginning(content.id);
+          } else {
+            startPlayback(content, null, 0);
+          }
+        } else {
+          const startTime = progress ? progress.resumePositionSec : 0;
+          startPlayback(content, null, startTime);
+        }
       });
     }
 
@@ -1456,9 +1503,8 @@ document.addEventListener("DOMContentLoaded", () => {
     startPlayback(content, episodeId, 0); 
   }
   
-  
-  // --- 👇 כל פונקציות הנגן החדשות מתחילות כאן 👇 ---
-  
+  // --- Player functions ---
+
   async function startPlayback(content, episodeId = null, startTime = null) {
     if (!content) return;
 
@@ -1545,7 +1591,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
         await videoPlayer.play();
     } catch (playError) {
-        console.error("Play failed (usually requires user interaction):", playError);
+        console.error("Play failed, requires user interaction in some browsers:", playError);
     }
 
     if (!playerEventsBound) {
@@ -1554,12 +1600,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  /**
-   * מחבר את כל האירועים לכפתורי הנגן
-   */
   function bindPlayerEvents() {
-    console.log("DEBUG: Binding player events NOW."); 
-    
     const videoPlayer = document.getElementById("playerVideo");
     const playerClose = document.getElementById("playerClose");
     const playerOverlay = document.getElementById("playerOverlay");
@@ -1574,11 +1615,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const episodeDrawer = document.getElementById("episodeDrawer");
     const episodeListContainer = document.getElementById("episodeListContainer");
 
-    // סגירת הנגן
     if (playerClose) playerClose.addEventListener('click', stopPlayback);
     if (playerOverlay) playerOverlay.addEventListener('click', stopPlayback);
 
-    // כפתור Play/Pause
     if (playPauseBtn && videoPlayer) {
         playPauseBtn.addEventListener('click', () => {
             if (videoPlayer.paused) {
@@ -1595,7 +1634,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // חזרה/קדימה 10 שניות
     if (rewindBtn) {
       rewindBtn.addEventListener('click', () => {
         if (videoPlayer) videoPlayer.currentTime -= 10;
@@ -1607,7 +1645,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // טיימליין
     if (videoPlayer && timeline) {
       videoPlayer.addEventListener('timeupdate', () => {
         const progress = (videoPlayer.currentTime / videoPlayer.duration) * 100;
@@ -1622,17 +1659,12 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // מסך מלא (עם תיקון ליציאה)
     if (fullscreenBtn && playerWrapper) {
         fullscreenBtn.addEventListener('click', () => {
             if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                } else if (document.webkitExitFullscreen) { 
-                    document.webkitExitFullscreen();
-                } else if (document.msExitFullscreen) { 
-                    document.msExitFullscreen();
-                }
+                if (document.exitFullscreen) document.exitFullscreen();
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                else if (document.msExitFullscreen) document.msExitFullscreen();
             } else {
                 const el = playerWrapper;
                 if (el.requestFullscreen) el.requestFullscreen();
@@ -1642,7 +1674,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // פרק הבא
     if (nextEpisodeBtn) {
         nextEpisodeBtn.addEventListener('click', playNextEpisode);
     }
@@ -1656,7 +1687,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // מגירת פרקים
     if (episodeListBtn) {
         episodeListBtn.addEventListener('click', () => {
             episodeDrawer.classList.toggle('visible');
@@ -1666,7 +1696,6 @@ document.addEventListener("DOMContentLoaded", () => {
         episodeListContainer.addEventListener('click', handleDrawerEpisodeClick);
     }
     
-    // --- 👇 תיקון 1: שמירת התקדמות 👇 ---
     if (videoPlayer) {
       videoPlayer.addEventListener('timeupdate', () => {
         clearTimeout(progressUpdateTimer); 
@@ -1680,37 +1709,30 @@ document.addEventListener("DOMContentLoaded", () => {
               sendProgressUpdate(contentId, currentEpisodeId, lastPositionSec, durationSec);
             }
           }
-        }, 5000); // שמירת התקדמות כל 5 שניות
+        }, 5000);
       });
     }
   }
 
-  /**
-   * סוגר את מודאל הנגן
-   */
   function stopPlayback() {
     const videoPlayer = document.getElementById("playerVideo");
     const playerModal = document.getElementById("playerModal");
     const episodeDrawer = document.getElementById("episodeDrawer");
-    const playerWrapper = document.querySelector(".player-wrapper"); // ⭐️ הוספנו
+    const playerWrapper = document.querySelector(".player-wrapper");
     
-    clearTimeout(progressUpdateTimer); // הפסק לשלוח עדכוני התקדמות
+    clearTimeout(progressUpdateTimer);
 
-    // --- 👇 התיקון הקריטי מתחיל כאן 👇 ---
-    // בצע שמירה אחרונה, ידנית, של הזמן הנוכחי
     if (videoPlayer && videoPlayer.duration > 0) {
         const contentId = playerWrapper.dataset.contentId;
         const lastPositionSec = videoPlayer.currentTime;
         const durationSec = videoPlayer.duration;
         
         if (contentId && lastPositionSec > 0) {
-            // קריאה סינכרונית (לא async) לפונקציה כדי לעדכן את ה-state
             sendProgressUpdate(contentId, currentEpisodeId, lastPositionSec, durationSec);
         }
     }
-    // --- 👆 סוף התיקון 👆 ---
 
-    renderSections(); // עכשיו הקריאה הזו תשתמש במידע המעודכן
+    renderSections();
     
     if (videoPlayer) {
         videoPlayer.pause();
@@ -1724,9 +1746,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  /**
-   * טוען פרקים מה-API
-   */
   async function fetchEpisodes(contentId) {
     allEpisodes = []; 
     try {
@@ -1740,9 +1759,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  /**
-   * ממלא את מגירת הפרקים ב-HTML
-   */
   async function populateEpisodeDrawer(contentId, activeEpisodeId) {
     const episodeListContainer = document.getElementById("episodeListContainer");
     const episodeListTitle = document.getElementById("episodeListTitle");
@@ -1773,9 +1789,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  /**
-   * מטפל בלחיצה על פרק במגירה
-   */
   function handleDrawerEpisodeClick(event) {
     event.preventDefault();
     const target = event.target.closest('a');
@@ -1790,9 +1803,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  /**
-   * מפעיל את הפרק הבא
-   */
   function playNextEpisode() {
     if (allEpisodes.length === 0 || !currentEpisodeId) return;
 
@@ -1814,7 +1824,6 @@ document.addEventListener("DOMContentLoaded", () => {
             stopPlayback();
         }
     } else {
-        console.log("End of series or episode not found.");
         stopPlayback(); 
     }
   }
@@ -1852,6 +1861,7 @@ document.addEventListener("DOMContentLoaded", () => {
           };
       }
       state.progressMap.set(contentId, progress);
+      refreshPlayButtonsFor(contentId);
       
     } catch (err) {
       console.error("Failed to send progress update:", err);
