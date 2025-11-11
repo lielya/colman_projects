@@ -22,7 +22,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const profileModalTitle = document.getElementById("profileModalTitle");
   const profileForm = document.getElementById("profileForm");
   const profileNameInput = document.getElementById("profileName");
-  const profileAvatarInput = document.getElementById("profileAvatar");
+  
+  // We select the avatar radio buttons when we need them, so no global var
+  
   const saveProfileBtn = document.getElementById("saveProfileBtn");
 
   // Load profiles from server
@@ -54,8 +56,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         const profileDiv = document.createElement("div");
         profileDiv.className = `profile ${isManageMode ? 'manage-mode' : ''}`;
         profileDiv.dataset.profileId = profile.id;
+        
+        // Use a default avatar if the profile one is missing
+        const avatarSrc = profile.avatar || '/images/avatars/avatar1.png'; // Fallback
+        
         profileDiv.innerHTML = `
-          <img src="${profile.avatar || 'https://i.pinimg.com/236x/86/2a/53/862a537a244d4f18264398ebd1a8873a.jpg'}" 
+          <img src="${avatarSrc}" 
                alt="${profile.name}" 
                class="profile-avatar">
           <label class="visually-hidden" for="name-${profile.id}">Profile name</label>
@@ -152,9 +158,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   addProfileBtn.addEventListener("click", () => {
     editingProfileId = null;
     profileModalTitle.textContent = "Add Profile";
-    profileForm.reset();
+    profileForm.reset(); // This correctly resets the radio buttons to default
     profileNameInput.value = "";
-    profileAvatarInput.value = "";
+    
     profileModal.show();
   });
 
@@ -166,7 +172,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const avatar = profileAvatarInput.value.trim() || undefined;
+    // Find the radio button that is 'checked' and get its 'value'.
+    const avatar = document.querySelector('input[name="profileAvatar"]:checked').value;
 
     try {
       if (editingProfileId) {
@@ -174,7 +181,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const response = await fetch(`/api/profiles/${editingProfileId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, avatar })
+          body: JSON.stringify({ name, avatar }) // 'avatar' is now a local path
         });
 
         if (response.ok) {
@@ -189,7 +196,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const response = await fetch(`/api/users/${userId}/profiles`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, avatar })
+          body: JSON.stringify({ name, avatar }) // 'avatar' is now a local path
         });
 
         if (response.ok) {
@@ -214,7 +221,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     editingProfileId = profileId;
     profileModalTitle.textContent = "Edit Profile";
     profileNameInput.value = profile.name;
-    profileAvatarInput.value = profile.avatar || "";
+    
+    // We find the radio button whose 'value' matches the profile's
+    // avatar path and 'check' it.
+    
+    // Default to the first avatar if the profile has an old/empty value
+    const avatarValue = profile.avatar || "/images/avatars/avatar1.png";
+    const matchingRadio = document.querySelector(`input[name="profileAvatar"][value="${avatarValue}"]`);
+    
+    if (matchingRadio) {
+      matchingRadio.checked = true;
+    } else {
+      // Fallback: If the saved value is invalid, check the first avatar
+      document.querySelector('input[name="profileAvatar"]').checked = true;
+    }
+
     profileModal.show();
   }
 
@@ -231,10 +252,32 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (response.ok) {
         await loadProfiles();
-        await loadCharts(); // Reload charts after deletion
+        
+        // Safely try to reload charts. If it fails,
+        // log the error but don't show the user an alert.
+        try {
+          await loadCharts(); // Reload charts after deletion
+        } catch (chartError) {
+          console.error("Chart reload failed after deletion, but profile was deleted.", chartError);
+        }
+
       } else {
-        const error = await response.json();
-        alert(error.error || "Failed to delete profile");
+        
+        // --- THIS IS THE FIX ---
+        // The server responded with an error (e.g., 404, 500)
+        // We will *safely* try to parse the JSON error.
+        let errorMsg = "Failed to delete profile";
+        try {
+          // Try to parse the error message from the server
+          const error = await response.json();
+          errorMsg = error.error || errorMsg;
+        } catch (e) {
+          // The error response wasn't JSON, just use the status
+          errorMsg = `Failed to delete profile. Server responded with ${response.status}.`;
+          console.warn("Could not parse error JSON from delete response", e);
+        }
+        alert(errorMsg);
+        // --- END OF FIX ---
       }
     } catch (err) {
       console.error("Error deleting profile:", err);
