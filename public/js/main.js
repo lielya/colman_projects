@@ -836,10 +836,25 @@ document.addEventListener("DOMContentLoaded", () => {
     if (card) {
       event.preventDefault();
       const contentId = card.dataset.id;
-      const content = state.contentById.get(contentId);
-      if (content) {
-        openContentModal(content);
+      const cached = state.contentById.get(contentId);
+
+      if (cached) {
+        renderHero(cached);
+        openContentModal(cached);
+        return;
       }
+
+      fetch(`/api/content/${contentId}`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((content) => {
+          if (!content) return;
+          const merged = mergeContent(content) || content;
+          renderHero(merged);
+          openContentModal(merged);
+        })
+        .catch((error) => {
+          console.warn(`Failed to load content ${contentId}:`, error);
+        });
     }
   }
 
