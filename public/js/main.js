@@ -450,7 +450,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (cards.length > 0) {
       strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
       strip.dataset.originalLength = cards.length;
-      strip.dataset.isCircular = "true";
+      
+      // --- THIS IS THE FIX ---
+      // We are turning OFF circular scrolling.
+      strip.dataset.isCircular = "false"; 
     } else {
       strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
     }
@@ -462,11 +465,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     elements.sections.appendChild(sectionEl);
 
-    if (cards.length > 0 && strip.dataset.isCircular === "true") {
-      setTimeout(() => {
-        viewport.scrollLeft = 0;
-      }, 50);
-    }
+    // This logic is no longer needed because we are not doing a cyclic scroll
+    // if (cards.length > 0 && strip.dataset.isCircular === "true") {
+    //   ...
+    // }
 
     bindArrows(viewportId);
     
@@ -913,113 +915,86 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // --- THIS IS THE FIX ---
+  // A simple, non-cyclic bindArrows function.
   function bindArrows(viewportId) {
-  const viewport = document.getElementById(viewportId);
+    const viewport = document.getElementById(viewportId);
     if (!viewport || viewport.dataset.bound === "1") return;
 
-  const section = viewport.parentElement;
-  const prev = section.querySelector(".arrow-btn.prev");
-  const next = section.querySelector(".arrow-btn.next");
-  const strip = viewport.querySelector(".carousel-strip");
-  const isCircular = strip?.dataset.isCircular === "true";
-  const originalLength = strip ? parseInt(strip.dataset.originalLength, 10) : 0;
-  let isWrapping = false;
-  let scrollTimeout = null;
+    const section = viewport.parentElement;
+    const prev = section.querySelector(".arrow-btn.prev");
+    const next = section.querySelector(".arrow-btn.next");
+    const strip = viewport.querySelector(".carousel-strip");
 
-    const updateDisabled = () => {
-      if (isCircular && originalLength > 0) {
-        if (prev) prev.disabled = false;
-        if (next) next.disabled = false;
-        
-        if (!isWrapping) {
-          const firstCard = strip.querySelector('.media-card');
-          let cardWidth;
-          if (firstCard) {
-            cardWidth = firstCard.offsetWidth + 12; 
-          } else {
-            cardWidth = viewport.clientWidth / 7;
-          }
-          
-          const totalWidth = originalLength * cardWidth;
-          const scrollLeft = viewport.scrollLeft;
-          const scrollWidth = viewport.scrollWidth;
-          const clientWidth = viewport.clientWidth;
-          const maxScroll = scrollWidth - clientWidth;
-          
-          const threshold = 100; 
-          if (maxScroll > 0 && scrollLeft >= maxScroll - threshold) {
-            isWrapping = true;
-            viewport.style.scrollBehavior = 'auto';
-            const offset = Math.max(0, scrollLeft - maxScroll);
-            viewport.scrollLeft = offset;
-            setTimeout(() => {
-              viewport.style.scrollBehavior = 'smooth';
-              isWrapping = false;
-            }, 50);
-          }
-          else if (scrollLeft <= threshold && maxScroll > 0) {
-            isWrapping = true;
-            viewport.style.scrollBehavior = 'auto';
-            const offset = Math.max(0, scrollLeft);
-            viewport.scrollLeft = maxScroll - offset;
-            setTimeout(() => {
-              viewport.style.scrollBehavior = 'smooth';
-              isWrapping = false;
-            }, 50);
-          }
-        }
-      } else {
-        const maxScroll = viewport.scrollWidth - viewport.clientWidth;
-        if (prev) prev.disabled = viewport.scrollLeft <= 1;
-        if (next) next.disabled = viewport.scrollLeft >= maxScroll - 1;
-      }
-    };
-
+    // Function to calculate the scroll amount (one "page")
     const page = () => {
       const firstCard = strip?.querySelector('.media-card');
       if (firstCard) {
-        const cardWidth = firstCard.offsetWidth + 12; 
+        const cardWidth = firstCard.offsetWidth + 12; // 12 is the gap
+        // Scroll by 7 cards (like in your CSS)
         return cardWidth * 7; 
       }
+      // Fallback to viewport width
       return viewport.clientWidth;
+    };
+
+    // Function to update the disabled state of the buttons
+    const updateDisabled = () => {
+      // Use a small tolerance (e.g., 5px) for calculations
+      const tolerance = 5;
+      const scrollLeft = viewport.scrollLeft;
+      const scrollWidth = viewport.scrollWidth;
+      const clientWidth = viewport.clientWidth;
+      const maxScroll = scrollWidth - clientWidth;
+
+      if (prev) {
+        prev.disabled = scrollLeft <= tolerance;
+      }
+      if (next) {
+        next.disabled = scrollLeft >= maxScroll - tolerance;
+      }
     };
 
     if (prev) {
       prev.addEventListener("click", () => {
         const scrollAmount = -page();
-        viewport.scrollBy({ 
-          left: scrollAmount, 
-          behavior: "smooth" 
-        });
-        setTimeout(updateDisabled, 400);
+        // scrollBy will use the 'scroll-behavior: smooth' from the CSS
+        viewport.scrollBy({ left: scrollAmount }); 
+        
+        // We use setTimeout to wait for the smooth scroll animation
+        // to finish before updating the button states.
+        setTimeout(updateDisabled, 500); // 500ms should be enough
       });
     }
 
     if (next) {
       next.addEventListener("click", () => {
         const scrollAmount = page();
-        viewport.scrollBy({ 
-          left: scrollAmount, 
-          behavior: "smooth" 
-        });
-        setTimeout(updateDisabled, 400);
+        viewport.scrollBy({ left: scrollAmount });
+        setTimeout(updateDisabled, 500);
       });
     }
 
-  let rafId = null;
-  viewport.addEventListener("scroll", () => {
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(() => {
-      updateDisabled();
-    });
-  }, { passive: true });
-  
+    // Update buttons on initial load
+    // Use setTimeout to run this *after* the browser has rendered
+    setTimeout(updateDisabled, 100);
+
+    // Update buttons on manual scroll
+    viewport.addEventListener("scroll", () => {
+      // Use a timeout to avoid running this function too many times
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(updateDisabled, 150);
+    }, { passive: true });
+    
+    // Update buttons if the window is resized
     if (window.ResizeObserver) {
       new ResizeObserver(updateDisabled).observe(viewport);
     }
-  viewport.dataset.bound = "1";
-  updateDisabled();
-}
+
+    viewport.dataset.bound = "1";
+  }
+  // --- END OF FIX ---
+
 
   function setupInfiniteScroll(viewportId, genre) {
     const viewport = document.getElementById(viewportId);
@@ -1036,32 +1011,19 @@ document.addEventListener("DOMContentLoaded", () => {
         const scrollLeft = viewport.scrollLeft;
         const scrollWidth = viewport.scrollWidth;
         const clientWidth = viewport.clientWidth;
+        
+        // Check if we are near the end of the scroll
         const scrollPercentage = (scrollLeft + clientWidth) / scrollWidth;
 
         const pagination = state.genrePagination[genre];
         if (pagination && pagination.hasMore && !pagination.loading) {
-          const strip = viewport.querySelector(".carousel-strip");
-          const isCircular = strip?.dataset.isCircular === "true";
           
-          if (isCircular) {
-            const scrollWidth = viewport.scrollWidth;
-            const clientWidth = viewport.clientWidth;
-            const maxScroll = scrollWidth - clientWidth;
-            const scrollPercentage = maxScroll > 0 ? scrollLeft / maxScroll : 0;
-            
-            if (scrollPercentage > 0.7) {
-              isLoading = true;
-              loadMoreGenreContent(genre, viewportId).finally(() => {
-                isLoading = false;
-              });
-            }
-          } else {
-            if (scrollPercentage > 0.7) {
-              isLoading = true;
-              loadMoreGenreContent(genre, viewportId).finally(() => {
-                isLoading = false;
-              });
-            }
+          // Since it's not circular, we just check if we are near the end
+          if (scrollPercentage > 0.7) { 
+            isLoading = true;
+            loadMoreGenreContent(genre, viewportId).finally(() => {
+              isLoading = false;
+            });
           }
         }
       }, 150);
@@ -1130,56 +1092,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const viewport = document.getElementById(viewportId);
       if (viewport) {
         const strip = viewport.querySelector(".carousel-strip");
-        if (strip && strip.dataset.isCircular === "true") {
-          const originalLength = parseInt(strip.dataset.originalLength, 10);
-          const currentScroll = viewport.scrollLeft;
-          const cardWidth = viewport.clientWidth / 7;
-          const originalWidth = originalLength * cardWidth;
-          
-          const genreKey = genre;
-          const allItems = state.sections.newestByGenre[genreKey] || [];
-          
-          const allCards = allItems.map((item) => {
-            const merged = mergeContent(item);
-            return {
+        
+        // Since it's not circular, we just append the new cards
+        const cards = newItems.map((item) => {
+          const merged = mergeContent(item);
+          return cardHTML(
+            {
               content: merged,
               reason: null,
               progress: null,
-            };
-          });
-          
-          strip.innerHTML = allCards.map((card) => cardHTML(card, { allowSort: false })).join("");
-          strip.dataset.originalLength = allCards.length.toString();
-
-          const firstCard = strip.querySelector('.media-card');
-          let newCardWidth;
-          if (firstCard) {
-            newCardWidth = firstCard.offsetWidth + 12; 
-          } else {
-            newCardWidth = viewport.clientWidth / 7;
-          }
-          
-          const newScrollWidth = allCards.length * newCardWidth;
-          const newMaxScroll = newScrollWidth - viewport.clientWidth;
-          viewport.scrollLeft = Math.min(currentScroll, newMaxScroll);
-          
-          setTimeout(() => {
-            bindArrows(viewportId);
-          }, 50);
-        } else {
-          const cards = newItems.map((item) => {
-            const merged = mergeContent(item);
-            return cardHTML(
-              {
-                content: merged,
-                reason: null,
-                progress: null,
-              },
-              { allowSort: false }
-            );
-          });
-          strip.innerHTML += cards.join("");
-        }
+            },
+            { allowSort: false }
+          );
+        });
+        strip.innerHTML += cards.join("");
+        
+        // Update the button state after adding new content
+        bindArrows(viewportId); 
       }
     } catch (error) {
       console.error("Failed to load more genre content:", error);

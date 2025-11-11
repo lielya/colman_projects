@@ -73,10 +73,16 @@
     /* Feed container */
     .feed-sections{ padding:0 4% 60px; display:flex; flex-direction:column; gap:30px; }
     .feed-sections .row-title{ margin:0 0 8px; }
+    
     /* Carousel rows */
-    .carousel-section{ position:relative; }
+    .carousel-section{ 
+      position:relative; 
+      padding: 0 40px; /* 'safe zone' for arrows */
+    }
     .carousel-viewport{
-      overflow-x:auto; overflow-y:visible; scroll-behavior:smooth; padding:0 4% 10px;
+      overflow-x:auto; overflow-y:visible; 
+      scroll-behavior: smooth; /* <-- THIS IS THE FIX. IT'S BACK. */
+      padding-bottom: 10px; 
       -ms-overflow-style:none; scrollbar-width:none;
       scroll-snap-type: none;
       -webkit-overflow-scrolling: touch; 
@@ -88,10 +94,23 @@
     }
 
     /* Cards */
-    .media-card{ position:relative; background:rgba(0,0,0,0.6); border:1px solid #2b2b2b;
-      border-radius:10px; overflow:hidden; transition:transform .2s ease; }
-    .media-card:hover{ transform: translateY(-3px); }
-    .media-thumb{ width:100%; height:125px; object-fit:cover; display:block; }
+    .media-card{ 
+      position:relative; 
+      background:rgba(0,0,0,0.6); 
+      border:1px solid #2b2b2b;
+      border-radius:10px; 
+      transition: all .2s ease;
+    }
+    .media-card:hover{ 
+      transform: scale(1.35); /* 35% bigger hover effect */
+      z-index: 10;
+    }
+    .media-thumb{ 
+      width:100%; height:125px; 
+      object-fit:cover; display:block; 
+      border-radius: 10px 10px 0 0; 
+    }
+
     .media-body{ padding:10px; }
     .media-title{ font-size:.95rem; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .media-meta{ font-size:.8rem; color:#b3b3b3; }
@@ -117,14 +136,24 @@
     .flyout-meta{ font-size:.8rem; color:#b3b3b3; margin-bottom:6px; }
     .flyout-text{ font-size:.85rem; color:#ddd; }
 
-    /* Carousel arrows */
+    /* Circle Arrows */
     .arrow-btn{
-      position:absolute; top:50%; transform:translateY(-50%); width:36px; height:36px; border-radius:50%;
-      border:1px solid #555; background:rgba(0,0,0,0.6); color:#fff; display:grid; place-items:center;
+      position:absolute; 
+      width: 40px; 
+      height: 40px; 
+      top: 50%; 
+      bottom: auto; 
+      transform: translateY(-50%); 
+      border-radius: 50%; 
+      border: 1px solid #555; 
+      background:rgba(0,0,0,0.6); color:#fff; display:grid; place-items:center;
       cursor:pointer; transition:background-color .15s ease; z-index:10;
+      font-size: 1.2rem; 
     }
     .arrow-btn:hover{ background:rgba(255,255,255,0.12); }
-    .arrow-btn.prev{ left:10px; } .arrow-btn.next{ right:10px; }
+    .arrow-btn.prev{ left: 0; }
+    .arrow-btn.next{ right: 0; }
+
     .arrow-btn:disabled{ opacity:.35; cursor:not-allowed; }
     .section-empty{ text-align:center; padding:40px 0; color:#808080; font-size:1rem; }
     .empty-text{ margin:0; color:#808080; }
@@ -527,7 +556,7 @@
       <label class="me-1">Sort:</label>
       <select id="sortSelect" class="form-select form-select-sm" style="width:180px;">
         <option value="az" selected>Title A to Z</option>
-        <option value="za">Title Z to A</option>
+        <option value"za">Title Z to A</option>
         <option value="rating">Rating</option>
         <option value="popularity">Popularity</option>
       </select>
