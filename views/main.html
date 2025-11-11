@@ -444,7 +444,22 @@
         color: #fff;
         background-color: #333;
     }
-    /* --- 👆 סוף ה-CSS החדש 👆 --- */
+
+    /* מיקום כפתור העריכה בפינה הימנית למעלה של המודאל */
+    .admin-edit-button {
+        position: absolute;
+        top: 20px;
+        right: 70px; /* 70px כדי לתת מקום לכפתור הסגירה (X) */
+        z-index: 11; /* מעל הכותרת, אבל מתחת לכפתור הסגירה */
+    }
+    .admin-edit-button .btn {
+        font-size: 0.8rem; /* כפתור קטן יותר */
+        padding: 0.25rem 0.5rem;
+    }
+    .admin-edit-button .btn i {
+        font-size: 0.9rem; /* אייקון קטן יותר */
+        margin-right: 4px;
+    }
   </style>
 </head>
 <body>

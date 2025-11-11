@@ -5,7 +5,7 @@ const router = express.Router();
 // Import all the new file names
 const adminController = require('../controllers/adminController.js');
 const { isAuthenticated, isAdmin } = require('../middleware/authMiddleware.js');
-const upload = require('../Middleware/uploadMiddleware.js');
+const upload = require('../middleware/uploadMiddleware.js');
 
 // Route to GET the admin page
 router.get(
@@ -27,6 +27,18 @@ router.post(
     { name: 'videoFile', maxCount: 1 }
   ]),
   adminController.createContent // Finally, run the controller logic
+);
+
+router.post(
+  '/edit-content/:id',
+  isAuthenticated,
+  isAdmin,
+  upload.fields([ 
+    { name: 'posterImage', maxCount: 1 },
+    { name: 'backdropImage', maxCount: 1 },
+    { name: 'videoFile', maxCount: 1 }
+  ]),
+  adminController.updateContent 
 );
 
 module.exports = router;

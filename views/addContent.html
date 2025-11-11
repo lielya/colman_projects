@@ -14,6 +14,7 @@
     
     <style>
         body {
+            /* Background image set as requested */
             background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url('https://assets.nflxext.com/ffe/siteui/vlv3/a1dc92ca-091d-4ca9-a05b-8cd44bbfce6a/f9368347-e982-4856-a5a4-396796381f28/RS-en-20191230-popsignuptwoweeks-perspective_alpha_website_large.jpg') no-repeat center center fixed;
             background-size: cover;
             color: #fff;
@@ -25,7 +26,7 @@
         }
 
         .admin-container {
-            background-color: rgba(0, 0, 0, 0.85); 
+            background-color: rgba(0, 0, 0, 0.85); /* Semi-transparent form background */
             padding: 40px;
             border-radius: 8px;
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
@@ -35,7 +36,7 @@
         }
 
         .admin-container h1 {
-            color: #E50914; 
+            color: #E50914; /* Netflix Red */
             text-align: center;
             margin-bottom: 30px;
             font-weight: 700;
@@ -47,11 +48,13 @@
             width: 120px;
         }
 
+        /* Two-column grid layout CSS */
         .form-label, .col-form-label {
             color: #ccc;
             font-weight: 500;
         }
 
+        /* Aligns labels to the right on desktop */
         @media (min-width: 576px) { 
             .col-form-label {
                 text-align: right;
@@ -66,6 +69,10 @@
             padding: 10px 15px;
             border-radius: 4px;
         }
+        
+        .form-control:read-only {
+            background-color: #555; /* Darker background for read-only fields */
+        }
 
         .form-control:focus, .form-select:focus {
             background-color: #444;
@@ -74,6 +81,7 @@
             color: #fff;
         }
 
+        /* Fix for browser autocomplete text color */
         .form-control:-webkit-autofill,
         .form-control:-webkit-autofill:hover, 
         .form-control:-webkit-autofill:focus,
@@ -107,7 +115,7 @@
             padding: 10px;
             border-radius: 5px;
             font-weight: bold;
-            word-wrap: break-word; /* למקרה שהשגיאה ארוכה מאוד */
+            word-wrap: break-word; 
         }
         .alert-success {
             background-color: #28a745;
@@ -135,7 +143,7 @@
 <body>
     
     <div class="admin-container">
-        <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix Logo" class="logo">
+        <img src="/images/netflix-logo-full.png" alt="Netflix Logo" class="logo">
         <h1>Add New Content</h1>
 
         <form id="addContentForm" enctype="multipart/form-data">
@@ -240,6 +248,78 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
+        /**
+         * Populates the form with existing data when in "edit" mode
+         */
+        async function populateForm(contentId) {
+            try {
+                // 1. Fetch existing content data
+                const response = await fetch(`/api/content/${contentId}`);
+                if (!response.ok) throw new Error('Content not found');
+                const data = await response.json();
+
+                // 2. Change titles and button
+                document.querySelector('h1').textContent = 'Edit Content';
+                const submitButton = document.querySelector('button[type="submit"]');
+                submitButton.textContent = 'Update Content';
+
+                // 3. Set form to "edit" mode
+                const form = document.getElementById('addContentForm');
+                form.dataset.editId = data.id; 
+                
+                // 4. Fill all fields
+                document.getElementById('uniqueId').value = data.id || '';
+                document.getElementById('uniqueId').readOnly = true; 
+                document.getElementById('uniqueId').style.backgroundColor = '#555';
+                document.getElementById('title').value = data.title || '';
+                document.getElementById('type').value = data.type || 'movie';
+                document.getElementById('year').value = data.year || '';
+                document.getElementById('category').value = data.category || '';
+                document.getElementById('director').value = data.director || '';
+                document.getElementById('info').value = data.info || '';
+
+                // 5. Fill actor fields
+                if (data.actors && Array.isArray(data.actors)) {
+                    document.getElementById('actors_names').value = data.actors.map(a => a.name).join('\n');
+                    document.getElementById('actors_urls').value = data.actors.map(a => a.wikipediaUrl).join('\n');
+                }
+
+                // 6. Update file input labels
+                document.querySelector('label[for="posterImage"]').textContent = 'Poster (Leave blank to keep existing)';
+                document.querySelector('label[for="backdropImage"]').textContent = 'Backdrop (Leave blank to keep existing)';
+                document.querySelector('label[for="videoFile"]').textContent = 'Video (Leave blank to keep existing)';
+                
+                // 7. Make file inputs optional in edit mode
+                document.getElementById('posterImage').required = false;
+                document.getElementById('backdropImage').required = false;
+                document.getElementById('videoFile').required = false;
+
+            } catch (err) {
+                console.error('Failed to load content for editing:', err);
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'Failed to load content: ' + err.message;
+                messageDiv.classList.remove('d-none', 'alert-success');
+                messageDiv.classList.add('alert-danger');
+            }
+        }
+    
+        /**
+         * Main script execution on page load
+         */
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const editId = urlParams.get('edit'); // Check for ?edit=...
+
+            if (editId) {
+                // If "edit" is in the URL, populate the form
+                populateForm(editId);
+            }
+            // Otherwise, the form remains blank for "add" mode
+        });
+
+        /**
+         * Form submission handler (handles both Add and Edit)
+         */
         document.getElementById('addContentForm').addEventListener('submit', async function(event) {
             event.preventDefault(); 
 
@@ -248,52 +328,54 @@
             const messageDiv = document.getElementById('message');
             const submitButton = form.querySelector('button[type="submit"]');
 
+            // Check if we are in "edit" mode
+            const editId = form.dataset.editId;
+            const isEditMode = !!editId; 
+
+            // Set the correct URL and method
+            const url = isEditMode ? `/admin/edit-content/${editId}` : '/admin/add-content';
+            const method = 'POST';
+            const buttonText = isEditMode ? 'Update Content' : 'Add Content';
+
             submitButton.disabled = true;
-            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...';
-            messageDiv.classList.add('d-none'); // הסתר הודעות ישנות
+            submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ${isEditMode ? 'Updating...' : 'Adding...'}`;
 
             try {
-                const response = await fetch('/admin/add-content', {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json'
-                    },
-                    body: formData
+                const response = await fetch(url, { 
+                    method: method,
+                    body: formData 
                 });
 
-                // --- 👇 התיקון הקריטי נמצא כאן 👇 ---
-                // 1. קרא את התשובה כטקסט, פעם אחת בלבד
+                // Read the response as text first
                 const responseText = await response.text();
                 
                 let result;
                 try {
-                    // 2. נסה לפענח את הטקסט כ-JSON
+                    // Try to parse as JSON
                     result = JSON.parse(responseText);
                 } catch (jsonError) {
-                    // 3. אם זה נכשל (כי זה HTML של שגיאה), נטפל בזה
+                    // If it fails, check if response was OK but text
                     if (!response.ok) {
-                        // responseText מכיל את הודעת השגיאה מהשרת
+                        // If not OK, the text is the error
                         throw new Error(responseText || `Server error: ${response.status}`);
                     }
-                    // אם response.ok=true אבל זה לא JSON, זה מקרה מוזר
                     result = { message: "Success, but server response was not valid JSON." };
                 }
-                // --- 👆 סוף התיקון 👆 ---
 
                 if (response.ok) {
                     messageDiv.classList.remove('d-none', 'alert-danger');
                     messageDiv.classList.add('alert-success');
-                    messageDiv.textContent = result.message || "Content added successfully!";
+                    messageDiv.textContent = result.message || "Operation successful!";
                     form.reset(); 
                     
                     submitButton.disabled = false;
-                    submitButton.textContent = 'Add Content';
+                    submitButton.textContent = buttonText;
 
                     setTimeout(() => {
-                        window.location.href = result.redirect || '/';
+                        window.location.href = '/'; 
                     }, 2000); 
                 } else {
-                    // אם זה היה JSON אבל עם שגיאה (כמו "Unique ID already exists")
+                    // If it was valid JSON but had an error property
                     throw new Error(result.error || 'An unknown error occurred.');
                 }
             } catch (error) {
@@ -301,19 +383,18 @@
                 messageDiv.classList.remove('d-none', 'alert-success');
                 messageDiv.classList.add('alert-danger');
                 
-                // נקה את הודעת השגיאה (לפעמים היא מכילה HTML)
+                // Clean up potential HTML in error message
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = error.message;
                 const cleanError = tempDiv.textContent || tempDiv.innerText || error.message;
                 
-                // הצג רק את החלק הרלוונטי של השגיאה
                 const errorLines = cleanError.split('\n');
-                messageDiv.textContent = errorLines[0] || "An error occurred."; // הצג רק את השורה הראשונה
+                messageDiv.textContent = errorLines[0] || "An error occurred."; 
 
                 submitButton.disabled = false;
-                submitButton.textContent = 'Add Content';
+                submitButton.textContent = buttonText;
             }
         });
     </script>
-    </body>
+</body>
 </html>

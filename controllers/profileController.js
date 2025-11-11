@@ -1,4 +1,6 @@
 const mongoose = require("mongoose");
+
+// Models
 const Profile = require("../models/Profile");
 const User = require("../models/User");
 const Like = require("../models/Like");
@@ -6,6 +8,7 @@ const Content = require("../models/Content");
 const Progress = require("../models/Progress");
 const WatchEvent = require("../models/WatchEvent");
 
+// Helpers
 const ensureAssetPath = (value) => {
   if (!value || typeof value !== "string") return "";
 
@@ -27,10 +30,11 @@ const ensureAssetPath = (value) => {
   return normalized.replace(/\/{2,}/g, "/");
 };
 
-// --- 👇 התיקון נמצא כאן 👇 ---
+// Map content document to API shape
 const mapContent = (doc, likeMap = null) => {
   if (!doc) return null;
   const docId = doc._id?.toString?.() || doc.id;
+
   const totalLikes =
     typeof doc.totalLikes === "number"
       ? doc.totalLikes
@@ -51,7 +55,7 @@ const mapContent = (doc, likeMap = null) => {
     videoUrl: ensureAssetPath(doc.videoUrl),
     info: doc.info,
     likes: totalLikes,
-    rating: doc.rating || 'N/A', // <-- הוספנו את השורה הזו
+    rating: doc.rating || "N/A", // fallback if rating missing
     score: doc.score || 0,
     totalLikes,
     completions: doc.completions || 0,
@@ -60,7 +64,6 @@ const mapContent = (doc, likeMap = null) => {
     updatedAt: doc.updatedAt,
   };
 };
-// --- 👆 סוף התיקון 👆 ---
 
 const toObjectId = (value) => {
   if (!value) return null;
@@ -76,26 +79,15 @@ const sanitizeNumber = (value, fallback = 0) => {
   return Number.isFinite(num) ? num : fallback;
 };
 
+// Build a map of contentId -> likeCount (only for given IDs)
 const buildGlobalLikeMap = async (contentIds = []) => {
   const match = { liked: true };
 
-  const ids = contentIds
-    .map((id) => toObjectId(id))
-    .filter(Boolean);
+  const ids = contentIds.map((id) => toObjectId(id)).filter(Boolean);
+  if (contentIds.length > 0 && ids.length === 0) return new Map();
+  if (ids.length === 0) return new Map();
 
-  if (contentIds.length > 0 && ids.length === 0) {
-    return new Map();
-  }
-
-  if (ids.length > 0) {
-    match.contentId = { $in: ids };
-  } else {
-    // אם אין IDs ספציפיים, אולי כדאי לא להמשיך? או לשלוף הכל?
-    // כרגע, אם contentIds ריק, ids יהיה ריק, ו-match.contentId לא יוגדר
-    // מה שיגרום לאגריגציה לרוץ על *כל* הלייקים. זה אולי לא רצוי.
-    // נוסיף בדיקה - אם אין IDs, נחזיר מפה ריקה.
-    return new Map();
-  }
+  match.contentId = { $in: ids };
 
   const likeCounts = await Like.aggregate([
     { $match: match },
@@ -104,19 +96,16 @@ const buildGlobalLikeMap = async (contentIds = []) => {
 
   const map = new Map();
   likeCounts.forEach((row) => {
-    if (row?._id) {
-      map.set(row._id.toString(), row.count);
-    }
+    if (row?._id) map.set(row._id.toString(), row.count);
   });
   return map;
 };
 
+// Popularity score = likes + completions
 const computePopularity = async (match = {}, limit = 20) => {
   const pipeline = [];
 
-  if (Object.keys(match).length > 0) {
-    pipeline.push({ $match: match });
-  }
+  if (Object.keys(match).length > 0) pipeline.push({ $match: match });
 
   pipeline.push(
     {
@@ -176,55 +165,30 @@ const computePopularity = async (match = {}, limit = 20) => {
       },
     },
     {
-      $sort: {
-        score: -1,
-        createdAt: -1,
-        year: -1,
-        title: 1,
-      },
+      $sort: { score: -1, createdAt: -1, year: -1, title: 1 },
     },
     { $limit: limit },
-    {
-      $project: {
-        watchEvents: 0,
-        likeDocs: 0,
-      },
-    }
+    { $project: { watchEvents: 0, likeDocs: 0 } }
   );
 
   return Content.aggregate(pipeline);
 };
 
+// Get newest items per genre
 const buildNewestByGenre = async (limitPerGenre = null) => {
-  // Use environment variable if not provided, default to 10
   if (limitPerGenre === null) {
     limitPerGenre = parseInt(process.env.CONTENT_ITEMS_PER_PAGE, 10) || 10;
   }
+
   const pipeline = [
-    {
-      $sort: {
-        createdAt: -1,
-        year: -1,
-        title: 1,
-      },
-    },
-    {
-      $group: {
-        _id: "$category",
-        items: { $push: "$$ROOT" },
-      },
-    },
-    {
-      $project: {
-        category: "$_id",
-        items: { $slice: ["$items", limitPerGenre] },
-        _id: 0,
-      },
-    },
+    { $sort: { createdAt: -1, year: -1, title: 1 } },
+    { $group: { _id: "$category", items: { $push: "$$ROOT" } } },
+    { $project: { category: "$_id", items: { $slice: ["$items", limitPerGenre] }, _id: 0 } },
     { $sort: { category: 1 } },
   ];
 
   const grouped = await Content.aggregate(pipeline);
+
   const allContentIds = grouped
     .flatMap((group) => group.items || [])
     .map((item) => item?._id?.toString?.())
@@ -241,16 +205,16 @@ const buildNewestByGenre = async (limitPerGenre = null) => {
   return result;
 };
 
+// Map a progress document to API shape
 const mapProgressEntry = (item, likeMap = null) => {
   if (!item || !item.contentId) return null;
-  // contentId עשוי להיות אובייקט מלא או רק ID, נטפל בשני המקרים
+
   const contentDoc = item.contentId.title ? item.contentId : { _id: item.contentId };
-  
   const resumePositionSec = Math.max(0, (item.lastPositionSec || 0) - 10);
 
   return {
     id: item._id.toString(),
-    content: mapContent(contentDoc, likeMap), // נשתמש ב-mapContent כדי לקבל פורמט אחיד
+    content: mapContent(contentDoc, likeMap),
     episode: item.episodeId
       ? {
           id: item.episodeId._id.toString(),
@@ -270,6 +234,7 @@ const mapProgressEntry = (item, likeMap = null) => {
   };
 };
 
+// Continue watching section
 const buildContinueWatching = async (profileId, limit = 12) => {
   const rawItems = await Progress.find({
     profileId,
@@ -280,52 +245,38 @@ const buildContinueWatching = async (profileId, limit = 12) => {
     .limit(limit)
     .populate([
       { path: "contentId" },
-      {
-        path: "episodeId",
-        select: "title season episode videoUrl durationSec",
-      },
+      { path: "episodeId", select: "title season episode videoUrl durationSec" },
     ])
     .lean();
 
-  // Ensure uniqueness per content (latest progress first due to sorting)
+  // keep only latest per content
   const uniqueItems = [];
   const seenContent = new Set();
   for (const item of rawItems) {
     const contentId =
       item?.contentId?._id?.toString?.() || item?.contentId?.toString?.();
-    if (!contentId || seenContent.has(contentId)) {
-      continue;
-    }
+    if (!contentId || seenContent.has(contentId)) continue;
     seenContent.add(contentId);
     uniqueItems.push(item);
     if (uniqueItems.length >= limit) break;
   }
 
   const contentIds = uniqueItems
-    .map((item) =>
-      item?.contentId?._id?.toString?.() || item?.contentId?.toString?.()
-    )
+    .map((item) => item?.contentId?._id?.toString?.() || item?.contentId?.toString?.())
     .filter(Boolean);
 
   const likeMap = await buildGlobalLikeMap(contentIds);
 
-  return uniqueItems
-    .map((item) => mapProgressEntry(item, likeMap))
-    .filter(Boolean);
+  return uniqueItems.map((item) => mapProgressEntry(item, likeMap)).filter(Boolean);
 };
 
+// Recommendations by preferred categories and popularity
 const buildRecommendations = async (profileId, options = {}) => {
   const limit = options.limit || 20;
 
   const [likedDocs, recentProgress] = await Promise.all([
-    Like.find({ profileId, liked: true })
-      .populate({ path: "contentId" })
-      .lean(),
-    Progress.find({ profileId })
-      .sort({ updatedAt: -1 })
-      .limit(50)
-      .populate({ path: "contentId" })
-      .lean(),
+    Like.find({ profileId, liked: true }).populate({ path: "contentId" }).lean(),
+    Progress.find({ profileId }).sort({ updatedAt: -1 }).limit(50).populate({ path: "contentId" }).lean(),
   ]);
 
   const preferredCategories = new Set();
@@ -334,39 +285,26 @@ const buildRecommendations = async (profileId, options = {}) => {
   likedDocs.forEach((doc) => {
     if (doc.contentId?._id) {
       excludeIds.add(doc.contentId._id.toString());
-      if (doc.contentId.category) {
-        preferredCategories.add(doc.contentId.category);
-      }
+      if (doc.contentId.category) preferredCategories.add(doc.contentId.category);
     }
   });
 
   recentProgress.forEach((item) => {
     if (item.contentId?._id) {
       excludeIds.add(item.contentId._id.toString());
-      if (item.contentId.category) {
-        preferredCategories.add(item.contentId.category);
-      }
+      if (item.contentId.category) preferredCategories.add(item.contentId.category);
     }
   });
 
   const match = {};
   const categoryList = Array.from(preferredCategories);
-  if (categoryList.length > 0) {
-    match.category = { $in: categoryList };
-  }
+  if (categoryList.length > 0) match.category = { $in: categoryList };
 
-  const excludeObjectIds = Array.from(excludeIds)
-    .map(toObjectId)
-    .filter(Boolean);
-
-  if (excludeObjectIds.length > 0) {
-    match._id = { $nin: excludeObjectIds };
-  }
+  const excludeObjectIds = Array.from(excludeIds).map(toObjectId).filter(Boolean);
+  if (excludeObjectIds.length > 0) match._id = { $nin: excludeObjectIds };
 
   const recommendations = await computePopularity(match, limit);
-  const likeMap = await buildGlobalLikeMap(
-    recommendations.map((doc) => doc._id)
-  );
+  const likeMap = await buildGlobalLikeMap(recommendations.map((doc) => doc._id));
 
   const reasonsByCategory = {};
   categoryList.forEach((category) => {
@@ -375,13 +313,12 @@ const buildRecommendations = async (profileId, options = {}) => {
 
   return recommendations.map((item) => {
     const mapped = mapContent(item, likeMap);
-    const reason =
-      reasonsByCategory[mapped.category] ||
-      "Popular with viewers similar to you";
+    const reason = reasonsByCategory[mapped.category] || "Popular with viewers similar to you";
     return { ...mapped, reason };
   });
 };
 
+// Popular content for home page
 const buildPopularContent = async (limit = 20) => {
   const docs = await computePopularity({}, limit);
   const likeMap = await buildGlobalLikeMap(docs.map((doc) => doc._id));
@@ -393,18 +330,13 @@ const ensureProfileExists = async (profileId) => {
   return profile;
 };
 
-// ... (כל שאר הפונקציות כמו getProfiles, createProfile וכו' נשארות זהות) ...
-// (קוצר כאן כדי לחסוך מקום)
-// get all profiles
+// Profiles CRUD
 exports.getProfiles = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Verify user exists
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found" });
 
     const profiles = await Profile.find({ userId }).select("name avatar").lean();
 
@@ -431,27 +363,18 @@ exports.createProfile = async (req, res) => {
     }
 
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Check if user already has 5 profiles (maximum)
+    // limit to 5 profiles per user
     const existingProfilesCount = await Profile.countDocuments({ userId });
     if (existingProfilesCount >= 5) {
-      return res.status(400).json({ 
-        error: "Maximum of 5 profiles allowed per user" 
-      });
+      return res.status(400).json({ error: "Maximum of 5 profiles allowed per user" });
     }
 
-    // Check if profile name already exists for this user
-    const existingProfile = await Profile.findOne({ 
-      userId, 
-      name: name.trim() 
-    });
+    // unique name per user
+    const existingProfile = await Profile.findOne({ userId, name: name.trim() });
     if (existingProfile) {
-      return res.status(409).json({ 
-        error: "Profile name already exists for this user" 
-      });
+      return res.status(409).json({ error: "Profile name already exists for this user" });
     }
 
     const profile = new Profile({
@@ -466,58 +389,46 @@ exports.createProfile = async (req, res) => {
       message: "Profile created successfully",
       profile: {
         id: profile._id.toString(),
-      name: profile.name,
-      avatar: profile.avatar,
+        name: profile.name,
+        avatar: profile.avatar,
       },
     });
   } catch (error) {
     console.error("Create profile error:", error);
-    
     if (error.code === 11000) {
-      return res
-        .status(409)
-        .json({ error: "Profile name already exists for this user" });
+      return res.status(409).json({ error: "Profile name already exists for this user" });
     }
-
     res.status(500).json({ error: "Server error creating profile" });
   }
 };
 
-// Update profile
 exports.updateProfile = async (req, res) => {
   try {
     const { profileId } = req.params;
     const { name, avatar } = req.body || {};
 
     const profile = await Profile.findById(profileId);
-    if (!profile) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-    // If name is provided, validate and check for duplicates
+    // validate name and keep it unique for the same user
     if (name !== undefined) {
       if (typeof name !== "string" || !name.trim()) {
         return res.status(400).json({ error: "Profile name cannot be empty" });
       }
 
-      // Check if another profile with the same name exists for this user
       const existingProfile = await Profile.findOne({
         userId: profile.userId,
         name: name.trim(),
-        _id: { $ne: profileId }
+        _id: { $ne: profileId },
       });
       if (existingProfile) {
-        return res.status(409).json({ 
-          error: "Profile name already exists for this user" 
-        });
+        return res.status(409).json({ error: "Profile name already exists for this user" });
       }
 
       profile.name = name.trim();
     }
 
-    if (avatar !== undefined) {
-      profile.avatar = avatar;
-    }
+    if (avatar !== undefined) profile.avatar = avatar;
 
     await profile.save();
 
@@ -535,17 +446,14 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
-// Delete profile
 exports.deleteProfile = async (req, res) => {
   try {
     const { profileId } = req.params;
 
     const profile = await Profile.findById(profileId);
-    if (!profile) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-    // Delete related data (Progress, WatchEvent, Likes)
+    // cascade delete related data
     const Progress = require("../models/Progress");
     const WatchEvent = require("../models/WatchEvent");
     const Like = require("../models/Like");
@@ -553,7 +461,7 @@ exports.deleteProfile = async (req, res) => {
     await Promise.all([
       Progress.deleteMany({ profileId: profile._id }),
       WatchEvent.deleteMany({ profileId: profile._id }),
-      Like.deleteMany({ profileId: profile._id })
+      Like.deleteMany({ profileId: profile._id }),
     ]);
 
     await Profile.findByIdAndDelete(profileId);
@@ -565,17 +473,14 @@ exports.deleteProfile = async (req, res) => {
   }
 };
 
+// Likes
 exports.getLikes = async (req, res) => {
   try {
     const { profileId } = req.params;
     const profile = await ensureProfileExists(profileId);
-    if (!profile) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-    const likes = await Like.find({ profileId, liked: true })
-      .select("contentId")
-      .lean();
+    const likes = await Like.find({ profileId, liked: true }).select("contentId").lean();
 
     const contentIds = likes
       .map((like) => like.contentId)
@@ -595,28 +500,16 @@ exports.likeContent = async (req, res) => {
     const { contentId } = req.body || {};
 
     const profile = await ensureProfileExists(profileId);
-    if (!profile) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
 
     const contentObjectId = toObjectId(contentId);
-    if (!contentObjectId) {
-      return res.status(400).json({ error: "Valid contentId is required" });
-    }
+    if (!contentObjectId) return res.status(400).json({ error: "Valid contentId is required" });
 
     const contentExists = await Content.exists({ _id: contentObjectId });
-    if (!contentExists) {
-      return res.status(404).json({ error: "Content not found" });
-    }
+    if (!contentExists) return res.status(404).json({ error: "Content not found" });
 
-    const existing = await Like.findOne({
-      profileId,
-      contentId: contentObjectId,
-    });
-
-    if (existing && existing.liked) {
-      return res.json({ message: "Content already liked" });
-    }
+    const existing = await Like.findOne({ profileId, contentId: contentObjectId });
+    if (existing && existing.liked) return res.json({ message: "Content already liked" });
 
     await Like.findOneAndUpdate(
       { profileId, contentId: contentObjectId },
@@ -624,10 +517,7 @@ exports.likeContent = async (req, res) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    await Content.updateOne(
-      { _id: contentObjectId },
-      { $inc: { likes: 1 } }
-    );
+    await Content.updateOne({ _id: contentObjectId }, { $inc: { likes: 1 } });
 
     res.json({ message: "Content liked successfully" });
   } catch (error) {
@@ -642,25 +532,15 @@ exports.unlikeContent = async (req, res) => {
     const { contentId } = req.body || {};
 
     const profile = await ensureProfileExists(profileId);
-    if (!profile) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
 
     const contentObjectId = toObjectId(contentId);
-    if (!contentObjectId) {
-      return res.status(400).json({ error: "Valid contentId is required" });
-    }
+    if (!contentObjectId) return res.status(400).json({ error: "Valid contentId is required" });
 
-    const removed = await Like.findOneAndDelete({
-      profileId,
-      contentId: contentObjectId,
-    });
+    const removed = await Like.findOneAndDelete({ profileId, contentId: contentObjectId });
 
     if (removed && removed.liked) {
-      await Content.updateOne(
-        { _id: contentObjectId },
-        { $inc: { likes: -1 } }
-      );
+      await Content.updateOne({ _id: contentObjectId }, { $inc: { likes: -1 } });
     }
 
     res.json({ message: "Content unliked successfully" });
@@ -670,6 +550,7 @@ exports.unlikeContent = async (req, res) => {
   }
 };
 
+// Aggregated like counts
 exports.getGlobalLikeCounts = async (_req, res) => {
   try {
     const likeCounts = await Like.aggregate([
@@ -689,13 +570,12 @@ exports.getGlobalLikeCounts = async (_req, res) => {
   }
 };
 
+// Continue watching API
 exports.getContinueWatching = async (req, res) => {
   try {
     const { profileId } = req.params;
     const profile = await ensureProfileExists(profileId);
-    if (!profile) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
 
     const items = await buildContinueWatching(profile._id);
     res.json({ profileId, items });
@@ -705,13 +585,12 @@ exports.getContinueWatching = async (req, res) => {
   }
 };
 
+// Recommendations API
 exports.getRecommendations = async (req, res) => {
   try {
     const { profileId } = req.params;
     const profile = await ensureProfileExists(profileId);
-    if (!profile) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
 
     const items = await buildRecommendations(profile._id);
     res.json({ profileId, items });
@@ -721,13 +600,12 @@ exports.getRecommendations = async (req, res) => {
   }
 };
 
+// Upsert progress and record events
 exports.upsertProgress = async (req, res) => {
   try {
     const { profileId } = req.params;
     const profile = await ensureProfileExists(profileId);
-    if (!profile) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
 
     const {
       contentId,
@@ -740,20 +618,14 @@ exports.upsertProgress = async (req, res) => {
     } = req.body || {};
 
     const contentObjectId = toObjectId(contentId);
-    if (!contentObjectId) {
-      return res.status(400).json({ error: "Valid contentId is required" });
-    }
+    if (!contentObjectId) return res.status(400).json({ error: "Valid contentId is required" });
 
     const contentExists = await Content.exists({ _id: contentObjectId });
-    if (!contentExists) {
-      return res.status(404).json({ error: "Content not found" });
-    }
+    if (!contentExists) return res.status(404).json({ error: "Content not found" });
 
     const duration = Math.max(0, sanitizeNumber(durationSec, 0));
-    const position = Math.max(
-      0,
-      Math.min(duration, sanitizeNumber(lastPositionSec, 0))
-    );
+    const position = Math.max(0, Math.min(duration, sanitizeNumber(lastPositionSec, 0)));
+
     const explicitPercentage = Number.isFinite(Number(watchPercentage))
       ? Number(watchPercentage)
       : null;
@@ -765,18 +637,14 @@ exports.upsertProgress = async (req, res) => {
         ? Math.max(0, Math.min(100, Math.round((position / duration) * 100)))
         : 0;
 
-    const resolvedStatus =
-      status === "done" || computedPercentage >= 95 ? "done" : "in_progress";
+    const resolvedStatus = status === "done" || computedPercentage >= 95 ? "done" : "in_progress";
 
     const episodeObjectId = toObjectId(episodeId);
     if (episodeId && !episodeObjectId) {
       return res.status(400).json({ error: "Invalid episodeId" });
     }
 
-    const updateQuery = {
-      profileId: profile._id,
-      contentId: contentObjectId,
-    };
+    const updateQuery = { profileId: profile._id, contentId: contentObjectId };
 
     const updateDoc = {
       lastPositionSec: position,
@@ -801,17 +669,12 @@ exports.upsertProgress = async (req, res) => {
     })
       .populate([
         { path: "contentId" },
-        {
-          path: "episodeId",
-          select: "title season episode videoUrl durationSec",
-        },
+        { path: "episodeId", select: "title season episode videoUrl durationSec" },
       ])
       .lean();
 
     let eventType = typeof event === "string" ? event.toLowerCase() : null;
-    if (resolvedStatus === "done") {
-      eventType = "complete";
-    }
+    if (resolvedStatus === "done") eventType = "complete";
 
     if (eventType && ["start", "pause", "complete"].includes(eventType)) {
       await WatchEvent.create({
@@ -830,6 +693,7 @@ exports.upsertProgress = async (req, res) => {
   }
 };
 
+// Popular content API
 exports.getPopularContent = async (_req, res) => {
   try {
     const items = await buildPopularContent();
@@ -840,155 +704,120 @@ exports.getPopularContent = async (_req, res) => {
   }
 };
 
-// Get daily views statistics for all profiles
+// Stats: daily views per profile (last 7 days)
 exports.getDailyViewsStats = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Verify user exists
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Get all profiles for this user
     const profiles = await Profile.find({ userId }).select("_id name").lean();
 
-    // Get watch events for the last 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
     const watchEvents = await WatchEvent.find({
-      profileId: { $in: profiles.map(p => p._id) },
-      createdAt: { $gte: sevenDaysAgo }
+      profileId: { $in: profiles.map((p) => p._id) },
+      createdAt: { $gte: sevenDaysAgo },
     }).lean();
 
-    // Group by profile and date
     const stats = {};
-    profiles.forEach(profile => {
-      stats[profile._id.toString()] = {
-        profileName: profile.name,
-        dailyViews: {}
-      };
+    profiles.forEach((profile) => {
+      stats[profile._id.toString()] = { profileName: profile.name, dailyViews: {} };
     });
 
-    watchEvents.forEach(event => {
+    watchEvents.forEach((event) => {
       const profileId = event.profileId.toString();
       const date = new Date(event.createdAt);
-      const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
-
-      if (stats[profileId]) {
-        if (!stats[profileId].dailyViews[dateKey]) {
-          stats[profileId].dailyViews[dateKey] = 0;
-        }
-        stats[profileId].dailyViews[dateKey]++;
-      }
+      const dateKey = date.toISOString().split("T")[0];
+      if (!stats[profileId]) return;
+      if (!stats[profileId].dailyViews[dateKey]) stats[profileId].dailyViews[dateKey] = 0;
+      stats[profileId].dailyViews[dateKey]++;
     });
 
-    // Format for chart.js (last 7 days)
     const labels = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
-      labels.push(date.toISOString().split('T')[0]);
+      labels.push(date.toISOString().split("T")[0]);
     }
 
-    // Predefined colors for profiles
+    // colors for chart.js
     const colors = [
-      { bg: 'rgba(229, 9, 20, 0.6)', border: 'rgba(229, 9, 20, 1)' }, // Netflix red
-      { bg: 'rgba(0, 123, 255, 0.6)', border: 'rgba(0, 123, 255, 1)' }, // Blue
-      { bg: 'rgba(40, 167, 69, 0.6)', border: 'rgba(40, 167, 69, 1)' }, // Green
-      { bg: 'rgba(255, 193, 7, 0.6)', border: 'rgba(255, 193, 7, 1)' }, // Yellow
-      { bg: 'rgba(220, 53, 69, 0.6)', border: 'rgba(220, 53, 69, 1)' }  // Red
+      { bg: "rgba(229, 9, 20, 0.6)", border: "rgba(229, 9, 20, 1)" },
+      { bg: "rgba(0, 123, 255, 0.6)", border: "rgba(0, 123, 255, 1)" },
+      { bg: "rgba(40, 167, 69, 0.6)", border: "rgba(40, 167, 69, 1)" },
+      { bg: "rgba(255, 193, 7, 0.6)", border: "rgba(255, 193, 7, 1)" },
+      { bg: "rgba(220, 53, 69, 0.6)", border: "rgba(220, 53, 69, 1)" },
     ];
 
     const datasets = profiles.map((profile, index) => {
       const profileId = profile._id.toString();
-      const data = labels.map(date => stats[profileId]?.dailyViews[date] || 0);
+      const data = labels.map((date) => stats[profileId]?.dailyViews[date] || 0);
       const color = colors[index % colors.length];
       return {
         label: profile.name,
-        data: data,
+        data,
         backgroundColor: color.bg,
         borderColor: color.border,
-        borderWidth: 1
+        borderWidth: 1,
       };
     });
 
-    res.json({
-      labels,
-      datasets
-    });
+    res.json({ labels, datasets });
   } catch (error) {
     console.error("Get daily views stats error:", error);
     res.status(500).json({ error: "Server error retrieving daily views statistics" });
   }
 };
 
-// Get content popularity by genre statistics
+// Stats: genre popularity
 exports.getGenrePopularityStats = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Verify user exists
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Get all profiles for this user
     const profiles = await Profile.find({ userId }).select("_id").lean();
-    const profileIds = profiles.map(p => p._id);
+    const profileIds = profiles.map((p) => p._id);
 
-    // Get all watch events for these profiles
     const watchEvents = await WatchEvent.find({
-      profileId: { $in: profileIds }
-    }).populate({
-      path: 'contentId',
-      select: 'category'
-    }).lean();
+      profileId: { $in: profileIds },
+    })
+      .populate({ path: "contentId", select: "category" })
+      .lean();
 
-    // Count views by genre
     const genreCounts = {};
-    watchEvents.forEach(event => {
+    watchEvents.forEach((event) => {
       if (event.contentId && event.contentId.category) {
         const genre = event.contentId.category;
         genreCounts[genre] = (genreCounts[genre] || 0) + 1;
       }
     });
 
-    // Format for chart.js pie chart
     const labels = Object.keys(genreCounts);
     const data = Object.values(genreCounts);
-    
-    // Predefined colors for genres
+
     const genreColors = [
-      { bg: 'rgba(229, 9, 20, 0.6)', border: 'rgba(229, 9, 20, 1)' }, // Netflix red
-      { bg: 'rgba(0, 123, 255, 0.6)', border: 'rgba(0, 123, 255, 1)' }, // Blue
-      { bg: 'rgba(40, 167, 69, 0.6)', border: 'rgba(40, 167, 69, 1)' }, // Green
-      { bg: 'rgba(255, 193, 7, 0.6)', border: 'rgba(255, 193, 7, 1)' }, // Yellow
-      { bg: 'rgba(220, 53, 69, 0.6)', border: 'rgba(220, 53, 69, 1)' }, // Red
-      { bg: 'rgba(108, 117, 125, 0.6)', border: 'rgba(108, 117, 125, 1)' }, // Gray
-      { bg: 'rgba(23, 162, 184, 0.6)', border: 'rgba(23, 162, 184, 1)' }, // Cyan
-      { bg: 'rgba(255, 87, 34, 0.6)', border: 'rgba(255, 87, 34, 1)' }  // Orange
+      { bg: "rgba(229, 9, 20, 0.6)", border: "rgba(229, 9, 20, 1)" },
+      { bg: "rgba(0, 123, 255, 0.6)", border: "rgba(0, 123, 255, 1)" },
+      { bg: "rgba(40, 167, 69, 0.6)", border: "rgba(40, 167, 69, 1)" },
+      { bg: "rgba(255, 193, 7, 0.6)", border: "rgba(255, 193, 7, 1)" },
+      { bg: "rgba(220, 53, 69, 0.6)", border: "rgba(220, 53, 69, 1)" },
+      { bg: "rgba(108, 117, 125, 0.6)", border: "rgba(108, 117, 125, 1)" },
+      { bg: "rgba(23, 162, 184, 0.6)", border: "rgba(23, 162, 184, 1)" },
+      { bg: "rgba(255, 87, 34, 0.6)", border: "rgba(255, 87, 34, 1)" },
     ];
-    
-    const backgroundColors = labels.map((_, index) => 
-      genreColors[index % genreColors.length].bg
-    );
-    const borderColors = labels.map((_, index) => 
-      genreColors[index % genreColors.length].border
-    );
+
+    const backgroundColor = labels.map((_, i) => genreColors[i % genreColors.length].bg);
+    const borderColor = labels.map((_, i) => genreColors[i % genreColors.length].border);
 
     res.json({
       labels,
-      datasets: [{
-        data,
-        backgroundColor: backgroundColors,
-        borderColor: borderColors,
-        borderWidth: 1
-      }]
+      datasets: [{ data, backgroundColor, borderColor, borderWidth: 1 }],
     });
   } catch (error) {
     console.error("Get genre popularity stats error:", error);
@@ -996,6 +825,7 @@ exports.getGenrePopularityStats = async (req, res) => {
   }
 };
 
+// Newest-by-genre API
 exports.getNewestByGenre = async (_req, res) => {
   try {
     const grouped = await buildNewestByGenre();
@@ -1006,23 +836,20 @@ exports.getNewestByGenre = async (_req, res) => {
   }
 };
 
+// Home feed aggregation
 exports.getFeed = async (req, res) => {
   try {
     const { profileId } = req.params;
     const profile = await ensureProfileExists(profileId);
-    if (!profile) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+    if (!profile) return res.status(404).json({ error: "Profile not found" });
 
     const [continueWatching, recommendations, popular, newestByGenre, likeDocs] =
       await Promise.all([
         buildContinueWatching(profile._id),
         buildRecommendations(profile._id),
         buildPopularContent(20),
-        buildNewestByGenre(), // Will use CONTENT_ITEMS_PER_PAGE from env
-        Like.find({ profileId: profile._id, liked: true })
-          .select("contentId")
-          .lean(),
+        buildNewestByGenre(),
+        Like.find({ profileId: profile._id, liked: true }).select("contentId").lean(),
       ]);
 
     const likedContentIds = likeDocs
@@ -1049,3 +876,7 @@ exports.getFeed = async (req, res) => {
     res.status(500).json({ error: "Server error building feed" });
   }
 };
+
+
+
+

@@ -17,7 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  // אובייקט האלמנטים הראשי (רק מה שגלוי תמיד)
   const elements = {
     welcome: document.getElementById("welcome-text"),
     avatar: document.getElementById("profile-avatar"),
@@ -71,10 +70,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let searchTimer = null;
 
-  // משתנים גלובליים עבור הנגן
   let allEpisodes = [];
   let currentEpisodeId = null;
-  let playerEventsBound = false; // מונע חיבור אירועים כפול
+  let playerEventsBound = false; 
+  let progressUpdateTimer = null; 
 
   init().catch((err) => {
     console.error("Failed to initialise main view:", err);
@@ -91,11 +90,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const heroCandidate = pickHeroCandidate();
     if (heroCandidate) {
       renderHero(heroCandidate);
-} else {
+    } else {
       showErrorState("No titles available yet. Please check back soon.");
     }
     renderSections();
-    bindEvents(); // קורא לפונקציה שמחברת את האירועים *הראשיים*
+    bindEvents(); 
   }
 
   async function loadFeed() {
@@ -122,7 +121,6 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.welcome.textContent = `Hello, ${name}`;
       localStorage.setItem("selectedProfileName", name);
 
-      // --- בדיקת אדמין ---
       if (name.toLowerCase() === "admin") {
         const adminElements = document.querySelectorAll('.admin-only');
         adminElements.forEach(el => {
@@ -177,7 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
       merged.score = merged.score || existing.score || 0;
       merged.completions = merged.completions || existing.completions || 0;
       merged.actors = merged.actors || existing.actors || [];
-      merged.rating = merged.rating || existing.rating || 'N/A'; // הוספנו דירוג
+      merged.rating = merged.rating || existing.rating || 'N/A'; 
 
       state.contentById.set(content.id, merged);
 
@@ -196,7 +194,7 @@ document.addEventListener("DOMContentLoaded", () => {
     (state.sections.popular || []).forEach(registerContent);
 
     const newestByGenre = state.sections.newestByGenre || {};
-    Object.keys(newestByGenre).forEach((genre) => { // 'genre' מוגדר כאן
+    Object.keys(newestByGenre).forEach((genre) => { 
       newestByGenre[genre].forEach(registerContent);
       if (genre && genre !== "General") {
         genreSet.add(genre);
@@ -378,7 +376,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return {
           content: merged,
           reason: item.reason,
-          progress: options.showProgress ? item : null,
+          progress: options.showProgress ? state.progressMap.get(merged.id) : null, 
         };
       })
       .filter(Boolean);
@@ -581,7 +579,6 @@ document.addEventListener("DOMContentLoaded", () => {
     )}</span>
           </div>
           <div class="card-meta">
-            <span class="meta-item" data-score-for="${content.id}">Score: ${formatNumber(score)}</span>
             ${
               completions
                 ? `<span class="meta-item">Completed: ${formatNumber(completions)}</span>`
@@ -606,8 +603,9 @@ document.addEventListener("DOMContentLoaded", () => {
           )
       )
     );
-
-    const resumeLabel = formatTime(progress.resumePositionSec || 0);
+    
+    // תיקון: ודא ש-resumePositionSec קיים
+    const resumeLabel = formatTime(progress.resumePositionSec || progress.lastPositionSec || 0);
 
     return `
       <div class="progress-track" role="progressbar" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100">
@@ -719,9 +717,6 @@ document.addEventListener("DOMContentLoaded", () => {
         closeEpisodesModal();
       }
     });
-    
-    // האירועים של הנגן יחוברו על ידי bindPlayerEvents()
-    // ברגע שהנגן ייפתח
   }
 
   async function performSearch(query) {
@@ -879,10 +874,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const content = state.contentById.get(contentId);
     if (!content) return;
 
+    const progress = state.progressMap.get(contentId);
+    const startTime = progress ? progress.resumePositionSec : 0;
+    
     if (content.type === 'movie') {
-      startPlayback(content);
+      startPlayback(content, null, startTime); 
     } else {
-      openContentModal(content);
+      const episodeId = progress ? progress.episode?.id : null;
+      startPlayback(content, episodeId, startTime); 
     }
   }
 
@@ -906,7 +905,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       
       closeEpisodesModal();
-      startPlayback(content, episodeId); 
+      startPlayback(content, episodeId, 0); 
 
     } catch (error) {
       console.error("Failed to start from beginning:", error);
@@ -1282,6 +1281,30 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fullContent.category) metaParts.push(fullContent.category);
     elements.episodesModalInfo.textContent = metaParts.join(" · ") || "";
 
+    // --- 👇 התיקון מתחיל כאן 👇 ---
+    const modalHeader = elements.episodesModal.querySelector(".episodes-modal-header");
+
+    // 1. נקה כפתור עריכה ישן (אם קיים)
+    const oldEditBtn = modalHeader.querySelector('.admin-edit-button');
+    if (oldEditBtn) {
+      oldEditBtn.remove();
+    }
+
+    // 2. בדוק אם המשתמש הוא אדמין
+    if (state.profile.name.toLowerCase() === 'admin') {
+      // 3. צור את כפתור העריכה עם הקישור הנכון (בלי .html)
+      const editButtonHtml = `
+        <div class="admin-edit-button">
+            <a href="/admin/add-content?edit=${fullContent.id}" class="btn btn-outline-light">
+                <i class="bi bi-pencil-square"></i> Edit
+            </a>
+        </div>
+      `;
+      // 4. הזרק את הכפתור לתוך ה-header
+      modalHeader.insertAdjacentHTML('beforeend', editButtonHtml);
+    }
+    // --- 👆 סוף התיקון 👆 ---
+
     elements.episodesModal.style.display = "flex";
 
     renderContentInfo(fullContent);
@@ -1359,6 +1382,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <span class="content-detail-value">${escapeHtml(content.info || "")}</span>
           </div>
         </div>
+        
         ${hasActors ? `
           <div class="content-actors-section">
             <h3 class="actors-title">Cast</h3>
@@ -1371,6 +1395,7 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
           </div>
         ` : `<div class="content-actors-section"><p style="color: #b3b3b3; font-size: 0.9rem;">No cast information available.</p></div>`}
+
       </div>
     `;
 
@@ -1400,7 +1425,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (playBtn) {
       playBtn.addEventListener("click", () => {
         closeEpisodesModal();
-        startPlayback(content); 
+        const startTime = progress ? progress.resumePositionSec : 0;
+        startPlayback(content, null, startTime);
       });
     }
 
@@ -1498,16 +1524,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     
     closeEpisodesModal(); 
-    startPlayback(content, episodeId); 
+    startPlayback(content, episodeId, 0); 
   }
   
   
   // --- 👇 כל פונקציות הנגן החדשות מתחילות כאן 👇 ---
   
-  async function startPlayback(content, episodeId = null) {
+  async function startPlayback(content, episodeId = null, startTime = null) {
     if (!content) return;
 
-    // איתור רכיבי הנגן ברגע הלחיצה
     const playerModal = document.getElementById("playerModal");
     const playerWrapper = document.querySelector(".player-wrapper");
     const videoPlayer = document.getElementById("playerVideo");
@@ -1525,24 +1550,32 @@ document.addEventListener("DOMContentLoaded", () => {
     allEpisodes = [];
     currentEpisodeId = null;
     playerWrapper.dataset.type = content.type; 
+    playerWrapper.dataset.contentId = content.id; 
 
     if (content.type === 'series') {
         if (!episodeId) {
-            try {
-                const response = await fetch(`/api/content/${content.id}/first-episode`);
-                if (response.ok) {
-                    const firstEpisode = await response.json();
-                    episodeId = firstEpisode.id;
-                    videoUrl = firstEpisode.videoUrl;
-                    episodeTitle = firstEpisode.title;
-                } else {
-                    throw new Error('No first episode found');
+            const progress = state.progressMap.get(content.id);
+            episodeId = progress ? progress.episode?.id : null;
+            
+            if (!episodeId) {
+                try {
+                    const response = await fetch(`/api/content/${content.id}/first-episode`);
+                    if (response.ok) {
+                        const firstEpisode = await response.json();
+                        episodeId = firstEpisode.id;
+                        videoUrl = firstEpisode.videoUrl;
+                        episodeTitle = firstEpisode.title;
+                    } else {
+                        throw new Error('No first episode found');
+                    }
+                } catch (err) {
+                    alert('Could not load first episode.');
+                    return;
                 }
-            } catch (err) {
-                alert('Could not load first episode.');
-                return;
             }
-        } else {
+        }
+        
+        if (!videoUrl) {
             const episodes = await fetchEpisodes(content.id); 
             const episode = episodes.find(e => (e._id || e.id) === episodeId);
             if (episode) {
@@ -1559,8 +1592,7 @@ document.addEventListener("DOMContentLoaded", () => {
         
     } else {
         videoUrl = content.videoUrl; 
-        const episodeDrawer = document.getElementById("episodeDrawer");
-        if (episodeDrawer) episodeDrawer.classList.remove('visible'); 
+        document.getElementById("episodeDrawer").classList.remove('visible'); 
     }
 
     if (!videoUrl) {
@@ -1577,13 +1609,16 @@ document.addEventListener("DOMContentLoaded", () => {
     
     playerModal.classList.add('show'); 
     
+    if (startTime && startTime > 0) {
+        videoPlayer.currentTime = startTime;
+    }
+
     try {
         await videoPlayer.play();
     } catch (playError) {
         console.error("Play failed (usually requires user interaction):", playError);
     }
 
-    // חיבור האירועים (רק פעם אחת)
     if (!playerEventsBound) {
         bindPlayerEvents();
         playerEventsBound = true;
@@ -1594,9 +1629,8 @@ document.addEventListener("DOMContentLoaded", () => {
    * מחבר את כל האירועים לכפתורי הנגן
    */
   function bindPlayerEvents() {
-    console.log("DEBUG: Binding player events NOW."); // נוודא שזה רץ
+    console.log("DEBUG: Binding player events NOW."); 
     
-    // איתור כל הרכיבים מחדש (בטוח)
     const videoPlayer = document.getElementById("playerVideo");
     const playerClose = document.getElementById("playerClose");
     const playerOverlay = document.getElementById("playerOverlay");
@@ -1659,29 +1693,25 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // מסך מלא
+    // מסך מלא (עם תיקון ליציאה)
     if (fullscreenBtn && playerWrapper) {
-    fullscreenBtn.addEventListener('click', () => {
-
-        // בדיקה אם אנחנו כבר במסך מלא
-        if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
-            // יציאה ממסך מלא
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            } else if (document.webkitExitFullscreen) { // Chrome, Safari
-                document.webkitExitFullscreen();
-            } else if (document.msExitFullscreen) { // IE11
-                document.msExitFullscreen();
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) { 
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) { 
+                    document.msExitFullscreen();
+                }
+            } else {
+                const el = playerWrapper;
+                if (el.requestFullscreen) el.requestFullscreen();
+                else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+                else if (el.msRequestFullscreen) el.msRequestFullscreen();
             }
-        } else {
-            // כניסה למסך מלא
-            const el = playerWrapper;
-            if (el.requestFullscreen) el.requestFullscreen();
-            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-            else if (el.msRequestFullscreen) el.msRequestFullscreen();
-        }
-    });
-}
+        });
+    }
 
     // פרק הבא
     if (nextEpisodeBtn) {
@@ -1692,7 +1722,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (playerWrapper.dataset.type === 'series') {
                 playNextEpisode();
             } else {
-                stopPlayback(); // אם זה סרט, פשוט סגור את הנגן
+                stopPlayback(); 
             }
         });
     }
@@ -1706,6 +1736,24 @@ document.addEventListener("DOMContentLoaded", () => {
     if (episodeListContainer) {
         episodeListContainer.addEventListener('click', handleDrawerEpisodeClick);
     }
+    
+    // --- 👇 תיקון 1: שמירת התקדמות 👇 ---
+    if (videoPlayer) {
+      videoPlayer.addEventListener('timeupdate', () => {
+        clearTimeout(progressUpdateTimer); 
+        progressUpdateTimer = setTimeout(() => {
+          if (!videoPlayer.paused && videoPlayer.duration > 0) {
+            const contentId = playerWrapper.dataset.contentId;
+            const lastPositionSec = videoPlayer.currentTime;
+            const durationSec = videoPlayer.duration;
+            
+            if (contentId) {
+              sendProgressUpdate(contentId, currentEpisodeId, lastPositionSec, durationSec);
+            }
+          }
+        }, 5000); // שמירת התקדמות כל 5 שניות
+      });
+    }
   }
 
   /**
@@ -1715,7 +1763,26 @@ document.addEventListener("DOMContentLoaded", () => {
     const videoPlayer = document.getElementById("playerVideo");
     const playerModal = document.getElementById("playerModal");
     const episodeDrawer = document.getElementById("episodeDrawer");
+    const playerWrapper = document.querySelector(".player-wrapper"); // ⭐️ הוספנו
+    
+    clearTimeout(progressUpdateTimer); // הפסק לשלוח עדכוני התקדמות
 
+    // --- 👇 התיקון הקריטי מתחיל כאן 👇 ---
+    // בצע שמירה אחרונה, ידנית, של הזמן הנוכחי
+    if (videoPlayer && videoPlayer.duration > 0) {
+        const contentId = playerWrapper.dataset.contentId;
+        const lastPositionSec = videoPlayer.currentTime;
+        const durationSec = videoPlayer.duration;
+        
+        if (contentId && lastPositionSec > 0) {
+            // קריאה סינכרונית (לא async) לפונקציה כדי לעדכן את ה-state
+            sendProgressUpdate(contentId, currentEpisodeId, lastPositionSec, durationSec);
+        }
+    }
+    // --- 👆 סוף התיקון 👆 ---
+
+    renderSections(); // עכשיו הקריאה הזו תשתמש במידע המעודכן
+    
     if (videoPlayer) {
         videoPlayer.pause();
         videoPlayer.src = ""; 
@@ -1732,7 +1799,7 @@ document.addEventListener("DOMContentLoaded", () => {
    * טוען פרקים מה-API
    */
   async function fetchEpisodes(contentId) {
-    allEpisodes = []; // נקה מטמון פרקים קודם
+    allEpisodes = []; 
     try {
         const response = await fetch(`/api/content/${contentId}/episodes`);
         if (!response.ok) throw new Error('Failed to fetch episodes');
@@ -1790,7 +1857,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const content = state.contentById.get(contentId);
     
     if (content && episodeId) {
-        startPlayback(content, episodeId);
+        startPlayback(content, episodeId, 0); 
     }
   }
 
@@ -1812,7 +1879,7 @@ document.addEventListener("DOMContentLoaded", () => {
         
         const content = state.contentById.get(contentId);
         if (content) {
-            startPlayback(content, (nextEpisode._id || nextEpisode.id));
+            startPlayback(content, (nextEpisode._id || nextEpisode.id), 0); 
         } else {
             console.error("Content not found for next episode:", contentId);
             stopPlayback();
@@ -1820,6 +1887,45 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
         console.log("End of series or episode not found.");
         stopPlayback(); 
+    }
+  }
+
+  async function sendProgressUpdate(contentId, episodeId, lastPositionSec, durationSec) {
+    const payload = {
+      contentId,
+      episodeId: episodeId || null,
+      lastPositionSec,
+      durationSec,
+      status: "in_progress",
+      event: "timeupdate" 
+    };
+
+    try {
+      fetch(`/api/profiles/${state.profileId}/progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      
+      const progress = state.progressMap.get(contentId) || { content: state.contentById.get(contentId) };
+      progress.lastPositionSec = lastPositionSec;
+      progress.durationSec = durationSec;
+      progress.watchPercentage = (lastPositionSec / durationSec) * 100;
+      progress.resumePositionSec = Math.max(0, lastPositionSec); 
+      progress.status = "in_progress";
+      if (episodeId) {
+          const episode = allEpisodes.find(e => (e._id || e.id) === episodeId);
+          progress.episode = { 
+              id: episodeId,
+              title: episode ? episode.title : "Episode",
+              season: episode ? episode.season : 1,
+              number: episode ? episode.episode : 1
+          };
+      }
+      state.progressMap.set(contentId, progress);
+      
+    } catch (err) {
+      console.error("Failed to send progress update:", err);
     }
   }
 });

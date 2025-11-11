@@ -12,11 +12,11 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     let subFolder = "";
     if (file.fieldname === "posterImage" || file.fieldname === "backdropImage") {
-      subFolder = "uploads/images";
+      subFolder = "images"; 
     } else if (file.fieldname === "videoFile") {
-      subFolder = "uploads/videos";
+      subFolder = "videos"; 
     } else {
-      subFolder = "uploads/other";
+      subFolder = "other"; 
     }
 
     const absolutePath = path.join(__dirname, "..", "public", subFolder);
