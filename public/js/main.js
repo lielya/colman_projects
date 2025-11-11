@@ -507,9 +507,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const viewport = document.createElement("div");
     viewport.className = "carousel-viewport";
     viewport.id = viewportId;
-
-    const strip = document.createElement("div");
-    strip.className = "carousel-strip";
+ 
+     const strip = document.createElement("div");
+     strip.className = "carousel-strip";
     
     if (cards.length > 0) {
       strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
@@ -530,20 +530,6 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.sections.appendChild(sectionEl);
 
     bindArrows(viewportId);
-    
-    if (options.infiniteScroll && options.genre) {
-      setupInfiniteScroll(viewportId, options.genre);
-      if (!state.genrePagination[options.genre]) {
-        const initialItemCount = cards.length;
-        state.genrePagination[options.genre] = {
-          page: 1,
-          hasMore: true, 
-          loading: false,
-          initialCount: initialItemCount,
-        };
-        checkIfMoreContentAvailable(options.genre, initialItemCount);
-      }
-    }
   }
 
   function mergeContent(content) {
@@ -1008,61 +994,59 @@ document.addEventListener("DOMContentLoaded", () => {
     const next = section.querySelector(".arrow-btn.next");
     const strip = viewport.querySelector(".carousel-strip");
 
-    const page = () => {
-      const firstCard = strip?.querySelector('.media-card');
-      if (firstCard) {
-        const cardWidth = firstCard.offsetWidth + 12;
-        return cardWidth * 7; 
-      }
-      return viewport.clientWidth;
+    const measureCard = () => {
+      const firstCard = strip?.querySelector(".media-card");
+      if (!firstCard) return null;
+      const styles = window.getComputedStyle(firstCard);
+      const marginRight = parseFloat(styles.marginRight || "0");
+      const marginLeft = parseFloat(styles.marginLeft || "0");
+      const gap = marginRight > 0 ? marginRight : marginLeft;
+      const width = firstCard.offsetWidth + gap;
+      return width > 0 ? width : null;
     };
 
-    const updateDisabled = () => {
-      const tolerance = 5;
-      const scrollLeft = viewport.scrollLeft;
-      const scrollWidth = viewport.scrollWidth;
-      const clientWidth = viewport.clientWidth;
-      const maxScroll = scrollWidth - clientWidth;
+    const scrollByPage = (direction) => {
+      if (!strip) return;
+      const cardWidth = measureCard();
+      if (!cardWidth) return;
 
-      if (prev) {
-        prev.disabled = scrollLeft <= tolerance;
-      }
-      if (next) {
-        next.disabled = scrollLeft >= maxScroll - tolerance;
+      const cardsPerPage = Math.max(1, Math.round(viewport.clientWidth / cardWidth));
+      const distance = cardWidth * cardsPerPage;
+      const maxScroll = Math.max(0, strip.scrollWidth - viewport.clientWidth);
+      if (maxScroll === 0) return;
+
+      const current = viewport.scrollLeft;
+
+      if (direction > 0) {
+        if (current >= maxScroll - 2) {
+          viewport.scrollTo({ left: 0, behavior: "auto" });
+        } else {
+          const target = Math.min(current + distance, maxScroll);
+          viewport.scrollTo({ left: target, behavior: "smooth" });
+        }
+      } else {
+        if (current <= 2) {
+          viewport.scrollTo({ left: maxScroll, behavior: "auto" });
+        } else {
+          const target = Math.max(current - distance, 0);
+          viewport.scrollTo({ left: target, behavior: "smooth" });
+        }
       }
     };
 
     if (prev) {
-      prev.addEventListener("click", () => {
-        const scrollAmount = -page();
-        viewport.scrollBy({ left: scrollAmount }); 
-        setTimeout(updateDisabled, 500);
-      });
+      prev.disabled = false;
+      prev.addEventListener("click", () => scrollByPage(-1));
     }
 
     if (next) {
-      next.addEventListener("click", () => {
-        const scrollAmount = page();
-        viewport.scrollBy({ left: scrollAmount });
-        setTimeout(updateDisabled, 500);
-      });
-    }
-
-    setTimeout(updateDisabled, 100);
-
-    viewport.addEventListener("scroll", () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(updateDisabled, 150);
-    }, { passive: true });
-    
-    if (window.ResizeObserver) {
-      new ResizeObserver(updateDisabled).observe(viewport);
+      next.disabled = false;
+      next.addEventListener("click", () => scrollByPage(1));
     }
 
     viewport.dataset.bound = "1";
   }
   // --- END OF FIX ---
-
 
   function setupInfiniteScroll(viewportId, genre) {
     const viewport = document.getElementById(viewportId);
