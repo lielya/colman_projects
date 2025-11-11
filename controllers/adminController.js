@@ -1,194 +1,353 @@
 // controllers/adminController.js
 const path = require('path');
-const Content = require('../models/Content.js'); 
-const fetch = require('node-fetch'); 
+const fs = require('fs');
+const Content = require('../models/Content.js');
+const Episode = require('../models/Episode.js');
+const fetch = require('node-fetch');
 
-// --- HELPER FUNCTION TO FIX PATHS ---
-// Input: 'public/images/foo.jpg'
-// Output: '/images/foo.jpg'
-const getUrlPath = (fullPath) => {
-    if (!fullPath) return null;
-    // Use path.relative to get the path *after* 'public'
-    return '/' + path.relative('public', fullPath).replace(/\\/g, '/');
+// Helper utility to create a URL-safe "slug" from a string.
+const slugify = (text) => {
+  if (!text) return 'general';
+  return text.toString().toLowerCase()
+    .replace(/\s+/g, '-')       // Replace spaces with -
+    .replace(/[^\w\-]+/g, '')   // Remove all non-word chars
+    .replace(/\-\-+/g, '-')     // Replace multiple - with single -
+    .trim();
+};
+
+// Helper utility to save a file buffer to the 'public' directory.
+const saveFile = (file, relativePath) => {
+  // Construct the absolute path to save the file.
+  const fullPath = path.resolve(__dirname, '..', 'public', relativePath.startsWith('/') ? relativePath.substring(1) : relativePath);
+  const directory = path.dirname(fullPath);
+
+  // Create the directory if it doesn't exist.
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
+  
+  // Write the file to the disk.
+  fs.writeFileSync(fullPath, file.buffer);
+
+  // Return the web-accessible relative path, ensuring forward slashes.
+  return relativePath.replace(/\\/g, '/');
+};
+
+// Helper utility to fetch a movie/series rating from the OMDb API.
+async function getOmdbRating(title) {
+  try {
+    // Use environment variable for API key, with a fallback.
+    const apiKey = process.env.OMDB_API_KEY || 'd11be0e4';
+    if (apiKey === 'YOUR_OMDB_API_KEY_HERE') return 'N/A';
+
+    const omdbResponse = await fetch(`http://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${apiKey}`);
+    const movieData = await omdbResponse.json();
+
+    if (movieData.Response === 'False') return 'N/A';
+
+    // Prioritize IMDb rating, then try to convert Rotten Tomatoes.
+    let finalRating = 'N/A';
+    if (movieData.imdbRating && movieData.imdbRating !== 'N/A') {
+      finalRating = movieData.imdbRating;
+    } else if (movieData.Ratings && movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes')) {
+      const rtRating = movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes').Value;
+      if (rtRating.includes('%')) {
+        // Convert '90%' to '9.0'
+        finalRating = (parseFloat(rtRating.replace('%', '')) / 10.0).toFixed(1);
+      }
+    }
+    return finalRating;
+  } catch (err) {
+    console.error("Error fetching rating:", err.message);
+    return 'N/A';
+  }
 }
-// --- END OF HELPER FUNCTION ---
 
-
-// Serves the static HTML "Add Content" page
+// Serves the static HTML page for adding new content.
 const getAddContentPage = (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'views', 'addContent.html'));
 };
 
-// Handles the "Add New Content" form submission
+// Handles the creation of new content (movie or series).
 const createContent = async (req, res) => {
   try {
-    // 1. Get File Paths from Multer
-    if (!req.files) {
-      return res.status(400).json({ error: 'No files were uploaded.' });
+    const { type, title, year, category, info, director, id, actors_names, actors_urls } = req.body;
+
+    // Organize uploaded files (from multer) for easier access.
+    const filesMap = {
+      posterImage: req.files.find(f => f.fieldname === 'posterImage'),
+      backdropImage: req.files.find(f => f.fieldname === 'backdropImage'),
+      videoFile: req.files.find(f => f.fieldname === 'videoFile'),
+      episode_video: req.files.filter(f => f.fieldname === 'episode_video[]') // Field name from form
+    };
+
+    // Basic validation.
+    if (!type || !title || !id) {
+      return res.status(400).json({ error: 'Unique ID, Title, and Type are required.' });
     }
-    
-    const posterDiskPath = req.files.posterImage ? req.files.posterImage[0].path : null;
-    const backdropDiskPath = req.files.backdropImage ? req.files.backdropImage[0].path : null;
-    const videoDiskPath = req.files.videoFile ? req.files.videoFile[0].path : null;
-
-    if (!posterDiskPath || !backdropDiskPath || !videoDiskPath) {
-        return res.status(400).json({ error: 'Missing one or more required files.' });
+    if (!filesMap.posterImage || !filesMap.backdropImage) {
+      return res.status(400).json({ error: 'Poster and Backdrop images are required.' });
     }
 
-    // Convert filesystem paths to URL paths
-    const posterUrl = getUrlPath(posterDiskPath);
-    const backdropUrl = getUrlPath(backdropDiskPath);
-    const videoUrl = getUrlPath(videoDiskPath);
+    let posterUrl, backdropUrl, videoUrl = null;
+    const seriesTitleSlug = slugify(title); // For organizing series videos.
 
-    // 2. External API Call (OMDb for Rating)
-    const movieTitle = req.body.title;
-    const apiKey = process.env.OMDB_API_KEY || 'd11be0e4'; // Make sure this is your key
-    const omdbResponse = await fetch(`http://www.omdbapi.com/?t=${encodeURIComponent(movieTitle)}&apikey=${apiKey}`);
-    const movieData = await omdbResponse.json();
-    
-    // Rating conversion logic
-    let finalRating = 'N/A';
-    if (movieData.imdbRating && movieData.imdbRating !== 'N/A') {
-      finalRating = movieData.imdbRating; 
-    } 
-    else if (movieData.Ratings && Array.isArray(movieData.Ratings)) {
-      const rtRating = movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes');
-      if (rtRating && rtRating.Value.includes('%')) {
-        const percentString = rtRating.Value.replace('%', '');
-        const percentNumber = parseFloat(percentString);
-        if (!isNaN(percentNumber)) {
-          finalRating = (percentNumber / 10.0).toFixed(1); 
-        }
+    // Handle file saving based on content type (movie vs. series).
+    if (type === 'movie') {
+      if (!filesMap.videoFile) {
+        return res.status(400).json({ error: 'Video file is required for a movie.' });
+      }
+      posterUrl = saveFile(filesMap.posterImage, `/images/movies/${Date.now()}-${filesMap.posterImage.originalname}`);
+      backdropUrl = saveFile(filesMap.backdropImage, `/images/movies/${Date.now()}-${filesMap.backdropImage.originalname}`);
+      videoUrl = saveFile(filesMap.videoFile, `/videos/movies/${Date.now()}-${filesMap.videoFile.originalname}`);
+
+    } else if (type === 'series') {
+      posterUrl = saveFile(filesMap.posterImage, `/images/series/${Date.now()}-${filesMap.posterImage.originalname}`);
+      backdropUrl = saveFile(filesMap.backdropImage, `/images/series/${Date.now()}-${filesMap.backdropImage.originalname}`);
+
+      // Video file is optional for series (e.g., a trailer).
+      if (filesMap.videoFile) {
+        videoUrl = saveFile(filesMap.videoFile, `/videos/series/${seriesTitleSlug}/${Date.now()}-trailer.mp4`);
       }
     }
 
-    // 3. Build Actors Array
-    const actorNames = req.body.actors_names.split('\n').map(name => name.trim()).filter(Boolean);
-    const actorUrls = req.body.actors_urls.split('\n').map(url => url.trim()).filter(Boolean);
+    // Fetch external rating from OMDb.
+    const finalRating = await getOmdbRating(title);
+
+    // Process actor data from textareas (split by newline).
+    const actorNames = (actors_names || '').split('\n').map(name => name.trim()).filter(Boolean);
+    const actorUrls = (actors_urls || '').split('\n').map(url => url.trim()).filter(Boolean);
     const actors = [];
     for (let i = 0; i < actorNames.length; i++) {
       if (actorNames[i] && actorUrls[i]) {
-        actors.push({
-          name: actorNames[i],
-          wikipediaUrl: actorUrls[i]
-        });
+        actors.push({ name: actorNames[i], wikipediaUrl: actorUrls[i] });
       }
     }
 
-    // 4. Create and Save to DB
-    const newContent = new Content({ 
-      id: req.body.id,
-      type: req.body.type,
-      title: req.body.title,
-      year: req.body.year,
-      category: req.body.category,
-      info: req.body.info,
-      director: req.body.director,
-      
-      // Save the correct URL paths
+    // Create a new Content document for the database.
+    const newContent = new Content({
+      id: id,
+      type: type,
+      title: title,
+      year: year,
+      category: category,
+      info: info,
+      director: director,
       poster: posterUrl,
       backdrop: backdropUrl,
       videoUrl: videoUrl,
-
       actors: actors,
       rating: finalRating
     });
 
     await newContent.save();
-    
-    res.status(201).json({ message: 'Content added successfully!' });
+
+    // If it's a series, also process and save episodes.
+    if (type === 'series') {
+      
+        // Destructure episode data from req.body.
+        // Note: Form field names like 'episode_title[]' are parsed by body-parser
+        // and are available on req.body as 'episode_title' (as an array or single value).
+        let {
+            episode_season: seasons,
+            episode_number: numbers,
+            episode_title: titles,
+            episode_description: descriptions,
+            episode_duration: durations,
+            episode_thumbnail: thumbnails,
+            episode_airDate: airDates
+        } = req.body;
+        
+        // Check if any episode data was actually submitted.
+        if (titles && filesMap.episode_video && filesMap.episode_video.length > 0) {
+
+            // Utility to ensure we are working with arrays, even for single episode submissions.
+            const forceArray = (item) => (item ? (Array.isArray(item) ? item : [item]) : []);
+            
+            seasons = forceArray(seasons);
+            numbers = forceArray(numbers);
+            const episodeTitles = forceArray(titles);
+            descriptions = forceArray(descriptions);
+            durations = forceArray(durations);
+            thumbnails = forceArray(thumbnails);
+            airDates = forceArray(airDates);
+
+            // Validate that the number of text fields matches the number of video files.
+            if (episodeTitles.length !== filesMap.episode_video.length) {
+                throw new Error(`Episode data mismatch. Received ${episodeTitles.length} titles but ${filesMap.episode_video.length} files.`);
+            }
+
+            // Loop through each submitted episode.
+            for (let i = 0; i < episodeTitles.length; i++) {
+                const videoFile = filesMap.episode_video[i];
+                
+                // Validate that all fields for this episode are present.
+                if (!seasons[i] || !numbers[i] || !titles[i] || !descriptions[i] || !durations[i] || !thumbnails[i] || !airDates[i]) {
+                    throw new Error(`Missing required fields for Episode ${i + 1}.`);
+                }
+
+                // Save the episode video file.
+                const episodeVideoUrl = saveFile(videoFile, `/videos/series/${seriesTitleSlug}/s${seasons[i]}-e${numbers[i]}-${videoFile.originalname}`);
+                
+                // Create and save the new Episode document.
+                const newEpisode = new Episode({
+                    seriesId: newContent._id, // Link to the parent Content.
+                    season: seasons[i],
+                    episode: numbers[i],
+                    title: titles[i],
+                    description: descriptions[i],
+                    durationSec: durations[i],
+                    videoUrl: episodeVideoUrl,
+                    thumbnailUrl: thumbnails[i],
+                    airDate: airDates[i]
+                });
+                await newEpisode.save();
+            }
+        }
+    }
+
+    res.status(201).json({ message: 'Content and episodes added successfully!' });
 
   } catch (error) {
     console.error('Error creating content:', error);
-    if (error.code === 11000) { 
+    // Handle potential errors, including duplicate 'id'.
+    if (error.code === 11000) {
       return res.status(400).json({ error: 'Error: A content item with this Unique ID already exists.' });
     }
-    
     return res.status(500).json({ error: error.message || 'Server error' });
   }
 };
 
-// --- 👇 FUNCTIONS FOR "EDIT CONTENT" 👇 ---
-
-/**
- * Serves the "Edit Content" page
- * (It's the same page, the client-side JS will handle it)
- */
+// Serves the static HTML page for editing content (re-uses the addContent page).
 const getEditContentPage = (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'views', 'addContent.html'));
 };
 
-/**
- * Updates existing content in the database
- */
+// Handles updates for existing content.
 const updateContent = async (req, res) => {
   try {
-    const contentId = req.params.id; // Takes the _id from the URL
+    const contentId = req.params.id; // This is the MongoDB _id.
     
-    // 1. Find the existing content by its _id
-    // IMPORTANT: We use findById here, not findOne({ id: ... })
+    // Find the content in the DB by its ID.
     const contentToUpdate = await Content.findById(contentId);
     if (!contentToUpdate) {
       return res.status(404).json({ error: 'Content not found' });
     }
 
-    // 2. Update text fields
-    contentToUpdate.title = req.body.title || contentToUpdate.title;
-    contentToUpdate.year = req.body.year || contentToUpdate.year;
-    contentToUpdate.category = req.body.category || contentToUpdate.category;
-    contentToUpdate.info = req.body.info || contentToUpdate.info;
-    contentToUpdate.director = req.body.director || contentToUpdate.director;
-    contentToUpdate.type = req.body.type || contentToUpdate.type;
+    const { type, title, year, category, info, director, actors_names, actors_urls } = req.body;
 
-    // 3. Update actors
-    if (req.body.actors_names && req.body.actors_urls) {
-        const actorNames = req.body.actors_names.split('\n').map(name => name.trim()).filter(Boolean);
-        const actorUrls = req.body.actors_urls.split('\n').map(url => url.trim()).filter(Boolean);
+    // Organize any newly uploaded files.
+    const filesMap = {
+      posterImage: req.files.find(f => f.fieldname === 'posterImage'),
+      backdropImage: req.files.find(f => f.fieldname === 'backdropImage'),
+      videoFile: req.files.find(f => f.fieldname === 'videoFile'),
+      episode_video: req.files.filter(f => f.fieldname === 'episode_video[]')
+    };
+
+    // Check if the title changed, as this will trigger a new OMDb rating fetch.
+    let titleChanged = false;
+    if (title && title !== contentToUpdate.title) {
+        contentToUpdate.title = title;
+        titleChanged = true;
+    }
+    
+    // Update fields with new data or keep old data if not provided.
+    contentToUpdate.year = year || contentToUpdate.year;
+    contentToUpdate.category = category || contentToUpdate.category;
+    contentToUpdate.info = info || contentToUpdate.info;
+    contentToUpdate.director = director || contentToUpdate.director;
+    contentToUpdate.type = type || contentToUpdate.type;
+
+    // Process and update actor data if provided.
+    if (actors_names && actors_urls) {
+        const actorNames = (actors_names || '').split('\n').map(name => name.trim()).filter(Boolean);
+        const actorUrls = (actors_urls || '').split('\n').map(url => url.trim()).filter(Boolean);
         const actors = [];
         for (let i = 0; i < actorNames.length; i++) {
           if (actorNames[i] && actorUrls[i]) {
-            actors.push({
-              name: actorNames[i],
-              wikipediaUrl: actorUrls[i]
-            });
+            actors.push({ name: actorNames[i], wikipediaUrl: actorUrls[i] });
           }
         }
         contentToUpdate.actors = actors;
     }
 
-    // 4. Check for *new* file uploads and update paths
-    if (req.files) {
-      if (req.files.posterImage) {
-        contentToUpdate.poster = getUrlPath(req.files.posterImage[0].path);
-      }
-      if (req.files.backdropImage) {
-        contentToUpdate.backdrop = getUrlPath(req.files.backdropImage[0].path);
-      }
-      if (req.files.videoFile) {
-        contentToUpdate.videoUrl = getUrlPath(req.files.videoFile[0].path);
-      }
+    const seriesTitleSlug = slugify(contentToUpdate.title);
+    const currentType = contentToUpdate.type;
+    
+    // Save new files if they were uploaded, overwriting old paths.
+    if (filesMap.posterImage) {
+      const path = currentType === 'movie' ? `/images/movies/${Date.now()}-poster.jpg` : `/images/series/${Date.now()}-poster.jpg`;
+      contentToUpdate.poster = saveFile(filesMap.posterImage, path);
+    }
+    if (filesMap.backdropImage) {
+      const path = currentType === 'movie' ? `/images/movies/${Date.now()}-backdrop.jpg` : `/images/series/${Date.now()}-backdrop.jpg`;
+      contentToUpdate.backdrop = saveFile(filesMap.backdropImage, path);
+    }
+    if (filesMap.videoFile) {
+      const path = currentType === 'movie' ? `/videos/movies/${Date.now()}-video.mp4` : `/videos/series/${seriesTitleSlug}/${Date.now()}-trailer.mp4`;
+      contentToUpdate.videoUrl = saveFile(filesMap.videoFile, path);
     }
     
-    // 5. Update rating if title changed
-    if (req.body.title && req.body.title !== contentToUpdate.title) {
-        const apiKey = process.env.OMDB_API_KEY || 'd11be0e4'; // Make sure this is your key
-        const omdbResponse = await fetch(`http://www.omdbapi.com/?t=${encodeURIComponent(req.body.title)}&apikey=${apiKey}`);
-        const movieData = await omdbResponse.json();
-        
-        let finalRating = 'N/A';
-        if (movieData.imdbRating && movieData.imdbRating !== 'N/A') {
-          finalRating = movieData.imdbRating;
-        } else if (movieData.Ratings && movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes')) {
-          const rtRating = movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes').Value;
-          if (rtRating.includes('%')) {
-            finalRating = (parseFloat(rtRating.replace('%', '')) / 10.0).toFixed(1);
-          }
-        }
-        contentToUpdate.rating = finalRating;
+    // If the title was changed, get an updated rating.
+    if (titleChanged) {
+        contentToUpdate.rating = await getOmdbRating(contentToUpdate.title);
     }
     
-    // 6. Save changes
     await contentToUpdate.save();
+
+    // Logic to add *new* episodes during an edit (mirrors createContent).
+    // Note: This logic adds new episodes; it does not update existing ones.
+    if (contentToUpdate.type === 'series') {
+        let {
+            episode_season: seasons,
+            episode_number: numbers,
+            episode_title: titles,
+            episode_description: descriptions,
+            episode_duration: durations,
+            episode_thumbnail: thumbnails,
+            episode_airDate: airDates
+        } = req.body;
+        
+        if (titles && filesMap.episode_video && filesMap.episode_video.length > 0) {
+            
+            const forceArray = (item) => (item ? (Array.isArray(item) ? item : [item]) : []);
+            
+            seasons = forceArray(seasons);
+            numbers = forceArray(numbers);
+            const episodeTitles = forceArray(titles);
+            descriptions = forceArray(descriptions);
+            durations = forceArray(durations);
+            thumbnails = forceArray(thumbnails);
+            airDates = forceArray(airDates);
+
+            if (episodeTitles.length !== filesMap.episode_video.length) {
+                throw new Error(`Episode data mismatch. Received ${episodeTitles.length} titles but ${filesMap.episode_video.length} files.`);
+            }
+
+            for (let i = 0; i < episodeTitles.length; i++) {
+                const videoFile = filesMap.episode_video[i];
+                
+                if (!seasons[i] || !numbers[i] || !titles[i] || !descriptions[i] || !durations[i] || !thumbnails[i] || !airDates[i]) {
+                    throw new Error(`Missing required fields for Episode ${i + 1}.`);
+                }
+
+                const episodeVideoUrl = saveFile(videoFile, `/videos/series/${seriesTitleSlug}/s${seasons[i]}-e${numbers[i]}-${videoFile.originalname}`);
+                
+                const newEpisode = new Episode({
+                    seriesId: contentToUpdate._id,
+                    season: seasons[i],
+                    episode: numbers[i],
+                    title: titles[i],
+                    description: descriptions[i],
+                    durationSec: durations[i],
+                    videoUrl: episodeVideoUrl,
+                    thumbnailUrl: thumbnails[i],
+                    airDate: airDates[i]
+                });
+                await newEpisode.save();
+            }
+        }
+    }
     
     res.status(200).json({ message: 'Content updated successfully!' });
 
@@ -197,12 +356,11 @@ const updateContent = async (req, res) => {
     res.status(500).json({ error: error.message || 'Server error' });
   }
 };
-// --- 👆 END OF "EDIT CONTENT" FUNCTIONS 👆 ---
 
-
+// Export the route handlers.
 module.exports = {
   getAddContentPage,
   createContent,
-  getEditContentPage, // <-- Make sure to export
-  updateContent       // <-- Make sure to export
+  getEditContentPage,
+  updateContent
 };

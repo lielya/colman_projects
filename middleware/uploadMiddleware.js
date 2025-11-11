@@ -1,33 +1,26 @@
-const fs = require("fs");
-const path = require("path");
+// middleware/uploadMiddleware.js
 const multer = require("multer");
 
-const ensureDir = (dirPath) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
+// 1. Configure multer to store files in memory (RAM) as Buffer objects
+// instead of saving them directly to disk. This gives the controller
+// access to the file data before deciding where/how to save it.
+const storage = multer.memoryStorage();
+
+// 2. Define a basic file filter to accept only images and videos.
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
+    // Accept the file
+    cb(null, true);
+  } else {
+    // Reject the file
+    cb(new Error('Invalid file type, only images and videos are allowed!'), false);
   }
 };
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    let subFolder = "";
-    if (file.fieldname === "posterImage" || file.fieldname === "backdropImage") {
-      subFolder = "images"; 
-    } else if (file.fieldname === "videoFile") {
-      subFolder = "videos"; 
-    } else {
-      subFolder = "other"; 
-    }
-
-    const absolutePath = path.join(__dirname, "..", "public", subFolder);
-    ensureDir(absolutePath);
-    cb(null, absolutePath);
-  },
-  filename: (req, file, cb) => {
-    const cleanName = file.originalname.replace(/\s+/g, "-");
-    cb(null, `${Date.now()}-${cleanName}`);
-  },
+// Create the multer upload instance with the defined storage and filter.
+const upload = multer({ 
+  storage: storage,
+  fileFilter: fileFilter 
 });
 
-module.exports = multer({ storage });
-// middleware/uploadMiddleware.js
+module.exports = upload;
