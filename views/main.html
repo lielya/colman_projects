@@ -1,13 +1,10 @@
-<!--Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Netflix - Main</title>
-  <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <!-- Bootstrap Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"/>
   <style>
     /* Darker page background */
@@ -81,9 +78,8 @@
     .carousel-viewport{
       overflow-x:auto; overflow-y:visible; scroll-behavior:smooth; padding:0 4% 10px;
       -ms-overflow-style:none; scrollbar-width:none;
-      /* Smooth scrolling like Netflix */
       scroll-snap-type: none;
-      -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+      -webkit-overflow-scrolling: touch; 
     }
     .carousel-viewport::-webkit-scrollbar{ display:none; }
     .carousel-strip{
@@ -225,26 +221,26 @@
     .movie-play-btn:hover{ background:#f40612; }
     .episodes-section{ margin-top:25px; padding-top:20px; border-top:1px solid #333; }
 
-  /* Style for the new rating on the card */
-  .media-rating {
-  display: flex;
-  align-items: center;
-  gap: 5px; 
-  color: #fff; 
-  font-size: 0.85rem; 
-  font-weight: 600;
-  }
+    /* Style for the new rating on the card */
+    .media-rating {
+      display: flex;
+      align-items: center;
+      gap: 5px; 
+      color: #fff; 
+      font-size: 0.85rem; 
+      font-weight: 600;
+    }
+    .media-rating .bi-star-fill {
+      color: #fff; 
+      font-size: 0.8rem; 
+    }
 
-  .media-rating .bi-star-fill {
-  color: #fff; 
-  font-size: 0.8rem; 
-  }
+    /* כפתור אדמין מוסתר כברירת מחדל */
+    .admin-only {
+      display: none; 
+    }
 
-  .admin-only {
-    display: none; 
-  }
-
-    /* Player modal */
+    /* Player modal (הקוד הישן) */
     .player-modal{
       position:fixed; inset:0; display:none; align-items:center; justify-content:center;
       background:rgba(0,0,0,0.92); backdrop-filter:blur(3px); z-index:3000;
@@ -263,29 +259,202 @@
       position:absolute; top:12px; right:12px; width:40px; height:40px;
       border:none; border-radius:50%; background:rgba(0,0,0,0.6); color:#fff;
       display:flex; align-items:center; justify-content:center;
-      cursor:pointer; z-index:2; transition:background 0.2s ease;
+      cursor:pointer; z-index:10;
+      transition:background 0.2s ease;
     }
     .player-close:hover{ background:rgba(0,0,0,0.8); }
-    .player-meta{
-      position:absolute; left:0; right:0; bottom:0; padding:18px 24px;
-      background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 100%);
-      color:#fff;
+    
+    /* --- 👇 ה-CSS החדש לנגן (מחליף את הישן) 👇 --- */
+    
+    .player-meta {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0; /* (3) שינוי מיקום - למעלה */
+        padding: 20px 60px 20px 20px; 
+        background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 100%);
+        color: #fff;
+        opacity: 0; 
+        transition: opacity 0.3s ease;
+        z-index: 3;
     }
     .player-meta h3{ margin:0 0 6px; font-size:1.2rem; }
     .player-meta p{ margin:0; font-size:0.9rem; color:#d0d0d0; }
+
+    video::-webkit-media-controls { display: none !important; }
+    video::-moz-media-controls { display: none !important; }
+    video::media-controls { display: none !important; }
+
+    .player-controls {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+        padding: 10px 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        opacity: 0; 
+        transition: opacity 0.3s ease;
+        z-index: 3; 
+    }
+
+    .player-wrapper:hover .player-controls,
+    .player-wrapper:hover .player-meta {
+        opacity: 1;
+    }
+
+    .player-controls button {
+        background: none;
+        border: none;
+        color: #fff;
+        font-size: 1.4rem;
+        padding: 5px;
+        cursor: pointer;
+    }
+    .player-controls button:hover {
+        color: #E50914; 
+    }
+
+    /* (2) עיצוב כפתורי 10 שניות (כמו בנטפליקס) */
+.player-controls .btn-seek {
+    font-size: 1.8rem; /* גודל החץ המעגלי */
+    font-weight: 300;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    position: relative; /* קריטי למיקום המספר */
+    width: 36px; /* גודל אחיד */
+    height: 36px;
+    padding: 0; /* איפוס ריפוד */
+}
+.player-controls .btn-seek i {
+    /* האייקון עצמו, יושב כשכבת בסיס */
+    font-size: 1.8rem; 
+    position: absolute; /* ממקם אותו במרכז הכפתור */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.player-controls .btn-seek span {
+    font-size: 0.8rem; /* גודל המספר "10" */
+    font-weight: 700;
+    position: absolute; /* ממקם את המספר *מעל* האייקון */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* ממכרז את המספר בדיוק */
+    color: #fff; 
+    /* הקוד הזה דורס את ה-'left: -3px' הישן */
+}
+.player-controls .btn-seek:hover i,
+    .player-controls .btn-seek:hover span,
+    .player-controls .btn-seek:active i,
+    .player-controls .btn-seek:active span {
+        color: #E50914; /* אדום נטפליקס */
+    }
+
+    .player-controls button.series-only {
+        display: none;
+    }
+    .player-wrapper[data-type="series"] .player-controls button.series-only {
+        display: inline-block;
+    }
+    
+    .controls-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .controls-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: auto; /* דוחף ימינה */
+    }
+
+
+    .timeline {
+        flex-grow: 1; 
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 5px;
+        background: #555;
+        outline: none;
+        cursor: pointer;
+        transition: height 0.1s ease;
+        margin: 0 10px; 
+    }
+    .timeline:hover {
+        height: 8px; 
+    }
+    .timeline::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 15px;
+        height: 15px;
+        background: #E50914;
+        border-radius: 50%;
+        cursor: pointer;
+    }
+    .timeline::-moz-range-thumb {
+        width: 15px;
+        height: 15px;
+        background: #E50914;
+        border-radius: 50%;
+        cursor: pointer;
+    }
+
+    /* --- עיצוב מגירת פרקים --- */
+    .episode-drawer {
+        position: fixed;
+        top: 0;
+        right: -350px; 
+        width: 350px;
+        max-width: 90vw;
+        height: 100vh;
+        background-color: #111;
+        box-shadow: -5px 0 15px rgba(0,0,0,0.5);
+        transition: right 0.3s ease-in-out;
+        z-index: 4000; 
+        overflow-y: auto;
+        border-left: 1px solid #333;
+    }
+    .episode-drawer.visible {
+        right: 0; 
+    }
+    .drawer-content { padding: 20px; }
+    .drawer-content h3 { 
+        color: #fff;
+        border-bottom: 1px solid #333; 
+        padding-bottom: 10px; 
+    }
+    .drawer-content ul { list-style: none; padding: 0; }
+    .drawer-content li a {
+        color: #ccc;
+        text-decoration: none;
+        display: block;
+        padding: 10px 5px;
+        border-bottom: 1px solid #222;
+    }
+    .drawer-content li a:hover,
+    .drawer-content li.active a {
+        color: #fff;
+        background-color: #333;
+    }
+    /* --- 👆 סוף ה-CSS החדש 👆 --- */
   </style>
 </head>
 <body>
-  <!-- Header -->
   <header class="header">
     <div class="container-fluid">
       <div class="d-flex align-items-center justify-content-between">
-        <!-- Left: Logo -->
         <a class="brand me-4" href="#">
           <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo"/>
         </a>
 
-        <!-- Center: Nav -->
         <div class="nav-menu d-lg-flex me-auto">
           <ul class="nav-list navbar-nav me-auto d-flex flex-row">
             <li class="nav-item"><a href="#" class="active">Home</a></li>
@@ -302,7 +471,6 @@
           </ul>
         </div>
 
-        <!-- Right: search, bell, profile dropdown, search input -->
         <div class="icons d-flex align-items-center">
           <a href="#" id="searchToggle" aria-label="Search"><i class="bi bi-search"></i></a>
           <a href="#"><i class="bi bi-bell"></i></a>
@@ -326,7 +494,6 @@
     </div>
   </header>
 
-  <!-- HERO: random pick each login -->
   <section id="hero" class="hero">
     <div class="hero-content">
       <h1 id="heroTitle" class="hero-title"></h1>
@@ -340,7 +507,6 @@
     </div>
   </section>
 
-  <!-- Controls: sort and filter -->
   <section class="controls-bar">
     <div class="d-flex align-items-center gap-2">
       <label class="me-1">Sort:</label>
@@ -367,10 +533,8 @@
     </div>
   </section>
 
-  <!-- Dynamic Feed Sections -->
   <section id="feedSections" class="feed-sections"></section>
 
-  <!-- Episodes Modal -->
   <div id="episodesModal" class="episodes-modal" style="display: none;">
     <div class="episodes-modal-overlay" id="episodesModalOverlay"></div>
     <div class="episodes-modal-content">
@@ -387,24 +551,54 @@
     </div>
   </div>
 
-  <!-- Player Modal -->
   <div id="playerModal" class="player-modal" role="dialog" aria-modal="true" aria-hidden="true">
-    <div id="playerOverlay" class="player-overlay"></div>
-    <div class="player-wrapper">
-      <button id="playerClose" class="player-close" aria-label="Close player">
-        <i class="bi bi-x-lg"></i>
-      </button>
-      <video id="playerVideo" class="player-video" preload="auto" controls></video>
-      <div class="player-meta">
-        <h3 id="playerTitle"></h3>
-        <p id="playerSubtitle"></p>
+      <div id="playerOverlay" class="player-overlay"></div>
+      <div class="player-wrapper">
+          
+          <button id="playerClose" class="player-close" aria-label="Close player">
+              <i class="bi bi-x-lg"></i>
+          </button>
+  
+          <div class="player-meta">
+              <h3 id="playerTitle"></h3>
+              <p id="playerSubtitle"></p>
+          </div>
+  
+          <video id="playerVideo" class="player-video" preload="auto"></video>
+          
+          <div class="player-controls">
+              
+              <div class="controls-left">
+                  <button id="playPauseBtn" title="Play/Pause"><i class="bi bi-play-fill"></i></button>
+              </div>
+              
+              <input type="range" id="timeline" class="timeline" value="0" step="0.1" title="Timeline">
+              
+              <div class="controls-right">
+                  <button id="rewindBtn" title="Rewind 10s" class="btn-seek">
+                      <i class="bi bi-arrow-counterclockwise"></i><span>10</span>
+                  </button>
+                  <button id="forwardBtn" title="Forward 10s" class="btn-seek">
+                      <i class="bi bi-arrow-clockwise"></i><span>10</span>
+                  </button>
+                  
+                  <button id="episodeListBtn" class="series-only" title="Episodes"><i class="bi bi-list-ul"></i></button>
+                  <button id="nextEpisodeBtn" class="series-only" title="Next Episode"><i class="bi bi-skip-end-fill"></i></button>
+                  <button id="fullscreenBtn" title="Fullscreen"><i class="bi bi-arrows-fullscreen"></i></button>
+              </div>
+          </div>
+  
       </div>
-    </div>
   </div>
-
-  <!-- Bootstrap JS -->
+  
+  <div id="episodeDrawer" class="episode-drawer">
+      <div class="drawer-content">
+          <h3 id="episodeListTitle">Episodes</h3>
+          <ul id="episodeListContainer">
+              </ul>
+      </div>
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <!-- App JS -->
   <script src="./js/main.js"></script>
 </body>
 </html>

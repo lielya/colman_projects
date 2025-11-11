@@ -221,9 +221,9 @@ const actorsData = {
  */
 async function getRatingForTitle(title) {
   try {
-    const apiKey = process.env.OMDB_API_KEY || 'd11be0e4'; // ⚠️ Make sure your API key is set here
+    const apiKey = process.env.OMDB_API_KEY || 'd11be0e4'; 
     
-    if (apiKey === 'YOUR_OMDB_API_KEY_HERE') {
+    if (apiKey === 'd11be0e4') {
       console.warn(`[Seeder] OMDb API key not set. Skipping rating for "${title}".`);
       return 'N/A';
     }

@@ -1,6 +1,7 @@
 // Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888
 
 document.addEventListener("DOMContentLoaded", () => {
+  
   const userId = localStorage.getItem("userId");
   const profileId = localStorage.getItem("selectedProfileId");
   const profileName = localStorage.getItem("selectedProfileName");
@@ -16,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
+  // אובייקט האלמנטים הראשי (רק מה שגלוי תמיד)
   const elements = {
     welcome: document.getElementById("welcome-text"),
     avatar: document.getElementById("profile-avatar"),
@@ -39,12 +41,6 @@ document.addEventListener("DOMContentLoaded", () => {
     episodesModalTitle: document.getElementById("episodesModalTitle"),
     episodesModalInfo: document.getElementById("episodesModalInfo"),
     episodesModalBody: document.getElementById("episodesModalBody"),
-    playerModal: document.getElementById("playerModal"),
-    playerOverlay: document.getElementById("playerOverlay"),
-    playerClose: document.getElementById("playerClose"),
-    playerVideo: document.getElementById("playerVideo"),
-    playerTitle: document.getElementById("playerTitle"),
-    playerSubtitle: document.getElementById("playerSubtitle"),
   };
 
   const state = {
@@ -70,43 +66,15 @@ document.addEventListener("DOMContentLoaded", () => {
     searchQuery: "",
     searchResults: [],
     isLoading: false,
-    genrePagination: {}, // Track pagination state for each genre: { genre: { page: 1, hasMore: true, loading: false } }
-    player: {
-      isOpen: false,
-      contentId: null,
-      episodeId: null,
-      currentPosition: 0,
-      durationSec: 0,
-      lastSyncTime: 0,
-      syncInFlight: false,
-      suppressSync: false,
-      subtitleBase: "",
-    },
+    genrePagination: {}, 
   };
-
-  const CARD_GAP = 12;
-  const MIN_LOOP_ITEMS = 8;
 
   let searchTimer = null;
 
-  async function ensureContentHydrated(contentId) {
-    if (!contentId) return null;
-    const existing = state.contentById.get(contentId);
-    if (existing && existing.videoUrl) return existing;
-    try {
-      const response = await fetch(`/api/content/${contentId}`);
-      if (!response.ok) {
-        throw new Error(`Failed to load content ${contentId}: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data && data.id) {
-        return storeContentRecord(data);
-      }
-    } catch (error) {
-      console.error("Failed to hydrate content:", error);
-    }
-    return existing || null;
-  }
+  // משתנים גלובליים עבור הנגן
+  let allEpisodes = [];
+  let currentEpisodeId = null;
+  let playerEventsBound = false; // מונע חיבור אירועים כפול
 
   init().catch((err) => {
     console.error("Failed to initialise main view:", err);
@@ -127,8 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showErrorState("No titles available yet. Please check back soon.");
     }
     renderSections();
-    bindEvents();
-    initPlayerControls();
+    bindEvents(); // קורא לפונקציה שמחברת את האירועים *הראשיים*
   }
 
   async function loadFeed() {
@@ -155,17 +122,11 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.welcome.textContent = `Hello, ${name}`;
       localStorage.setItem("selectedProfileName", name);
 
-      console.log("Checking admin status...");
-      console.log("Profile name is:", name); 
-
+      // --- בדיקת אדמין ---
       if (name.toLowerCase() === "admin") {
-        console.log("Admin detected! Trying to show elements.");
-        
         const adminElements = document.querySelectorAll('.admin-only');
-        console.log("Found elements:", adminElements); 
-        
         adminElements.forEach(el => {
-          el.style.display = 'list-item';
+          el.style.display = 'list-item'; 
         });
       }
     }
@@ -194,8 +155,33 @@ document.addEventListener("DOMContentLoaded", () => {
     const genreSet = new Set();
 
     const registerContent = (content) => {
-      const merged = storeContentRecord(content);
-      if (merged && merged.category && merged.category !== "General") {
+      if (!content || !content.id) return;
+      const existing = state.contentById.get(content.id) || {};
+      const merged = {
+        ...existing,
+        ...content,
+      };
+
+      merged.poster = normalizeAsset(merged.poster || existing.poster || "");
+      merged.backdrop = normalizeAsset(merged.backdrop || existing.backdrop || "");
+      merged.category = merged.category || existing.category || "General";
+      merged.type = merged.type || existing.type || "movie";
+      merged.info = merged.info || existing.info || "";
+      merged.likes =
+        typeof merged.likes === "number"
+          ? merged.likes
+          : typeof existing.likes === "number"
+          ? existing.likes
+          : 0;
+      merged.totalLikes = merged.likes;
+      merged.score = merged.score || existing.score || 0;
+      merged.completions = merged.completions || existing.completions || 0;
+      merged.actors = merged.actors || existing.actors || [];
+      merged.rating = merged.rating || existing.rating || 'N/A'; // הוספנו דירוג
+
+      state.contentById.set(content.id, merged);
+
+      if (merged.category && merged.category !== "General") {
         genreSet.add(merged.category);
       }
     };
@@ -210,7 +196,7 @@ document.addEventListener("DOMContentLoaded", () => {
     (state.sections.popular || []).forEach(registerContent);
 
     const newestByGenre = state.sections.newestByGenre || {};
-    Object.keys(newestByGenre).forEach((genre) => {
+    Object.keys(newestByGenre).forEach((genre) => { // 'genre' מוגדר כאן
       newestByGenre[genre].forEach(registerContent);
       if (genre && genre !== "General") {
         genreSet.add(genre);
@@ -285,11 +271,9 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.heroPlay.dataset.resume = progress?.resumePositionSec || 0;
     elements.heroPlay.dataset.duration = progress?.durationSec || 0;
     elements.heroPlay.dataset.episodeId = progress?.episode?.id || "";
-    // Open content modal for both series and movies
     elements.heroPlay.textContent = stored.type === "series" ? "View Episodes" : (progress ? "Resume" : "Play");
     elements.heroPlay.onclick = () => openContentModal(stored);
 
-    // Show "Watch from Beginning" button only if progress exists
     if (elements.heroWatchFromBeginning) {
       if (progress && progress.watchPercentage > 0) {
         elements.heroWatchFromBeginning.style.display = "inline-block";
@@ -301,45 +285,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     elements.heroInfo.onclick = () => {
-      const info = [
-        stored.title,
-        elements.heroMeta.textContent,
-        "",
-        stored.info || "No description available.",
-      ].join("\n");
-      alert(info);
+      openContentModal(stored);
     };
-  }
-
-  function getCardWidthForStrip(strip, viewport) {
-    if (!strip) return viewport?.clientWidth || 0;
-    const firstCard = strip.querySelector(".media-card");
-    if (!firstCard) return viewport?.clientWidth || 0;
-    const style = window.getComputedStyle(firstCard);
-    const marginRight = parseFloat(style.marginRight || CARD_GAP);
-    const marginLeft = parseFloat(style.marginLeft || 0);
-    return firstCard.offsetWidth + marginLeft + marginRight;
-  }
-
-  function buildCircularMarkup(cards, options = {}) {
-    const markup = cards.map((card) => cardHTML(card, options));
-    if (markup.length === 0) {
-      return { markup: "", cloneCount: 0 };
-    }
-    const clones = Math.min(markup.length, 7);
-    const leadingClones = markup.slice(-clones);
-    const trailingClones = markup.slice(0, clones);
-    return {
-      markup: [...leadingClones, ...markup, ...trailingClones].join(""),
-      cloneCount: clones,
-    };
-  }
-
-  function shouldLoopSection(cards, options = {}) {
-    if (typeof options.forceLoop === "boolean") {
-      return options.forceLoop;
-    }
-    return Array.isArray(cards) && cards.length >= MIN_LOOP_ITEMS;
   }
 
   function renderSections() {
@@ -412,12 +359,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const content = item.content || item;
         const merged = mergeContent(content);
 
-        // Filter by category
         if (state.filter !== "all" && merged.category !== state.filter) {
           return null;
         }
 
-        // Filter by watched status
         if (state.watchedFilter !== "all") {
           const hasProgress = state.progressMap.has(merged.id);
           const isWatched = hasProgress && state.progressMap.get(merged.id)?.watchPercentage > 0;
@@ -450,16 +395,14 @@ document.addEventListener("DOMContentLoaded", () => {
             return titleB.localeCompare(titleA);
           
           case "rating":
-            // Sort by score (likes + completions)
-            const scoreA = contentA.score || (contentA.likes || 0) + (contentA.completions || 0);
-            const scoreB = contentB.score || (contentB.likes || 0) + (contentB.completions || 0);
-            return scoreB - scoreA; // Descending order (highest first)
+            const ratingA = parseFloat(contentA.rating) || 0;
+            const ratingB = parseFloat(contentB.rating) || 0;
+            return ratingB - ratingA; 
           
           case "popularity":
-            // Sort by popularity (likes)
             const likesA = contentA.likes || 0;
             const likesB = contentB.likes || 0;
-            return likesB - likesA; // Descending order (highest first)
+            return likesB - likesA; 
           
           case "az":
           default:
@@ -506,18 +449,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const strip = document.createElement("div");
     strip.className = "carousel-strip";
     
-    const enableLoop = shouldLoopSection(cards, options);
-    if (cards.length > 0 && enableLoop) {
-      const { markup, cloneCount } = buildCircularMarkup(cards, options);
-      strip.innerHTML = markup;
+    if (cards.length > 0) {
+      strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
       strip.dataset.originalLength = cards.length;
-      strip.dataset.cloneCount = cloneCount;
       strip.dataset.isCircular = "true";
     } else {
       strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
-      strip.dataset.originalLength = cards.length;
-      strip.dataset.cloneCount = "0";
-      strip.dataset.isCircular = "false";
     }
 
     viewport.appendChild(strip);
@@ -529,33 +466,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (cards.length > 0 && strip.dataset.isCircular === "true") {
       setTimeout(() => {
-        const firstCard = strip.querySelector(".media-card");
-        if (firstCard) {
-          const cardWidth = getCardWidthForStrip(strip, viewport);
-          const clones = parseInt(strip.dataset.cloneCount || "0", 10);
-          viewport.scrollLeft = cardWidth * clones;
-        } else {
-          viewport.scrollLeft = 0;
-        }
-      }, 60);
+        viewport.scrollLeft = 0;
+      }, 50);
     }
 
     bindArrows(viewportId);
     
-    // Setup infinite scroll for genre sections
     if (options.infiniteScroll && options.genre) {
       setupInfiniteScroll(viewportId, options.genre);
-      // Initialize pagination state if not exists
       if (!state.genrePagination[options.genre]) {
-        // Check if there might be more content (if we have exactly 10 items, likely more available)
         const initialItemCount = cards.length;
         state.genrePagination[options.genre] = {
           page: 1,
-          hasMore: true, // Will be updated when we try to load more
+          hasMore: true, 
           loading: false,
           initialCount: initialItemCount,
         };
-        // Pre-check if more content is available
         checkIfMoreContentAvailable(options.genre, initialItemCount);
       }
     }
@@ -563,7 +489,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function mergeContent(content) {
     if (!content || !content.id) return content;
-    return storeContentRecord(content);
+    const stored = state.contentById.get(content.id);
+    if (stored) return stored;
+    
+    const existing = {};
+    const merged = { ...existing, ...content };
+    merged.poster = normalizeAsset(merged.poster || existing.poster || "");
+    merged.backdrop = normalizeAsset(merged.backdrop || existing.backdrop || "");
+    merged.rating = merged.rating || existing.rating || 'N/A';
+    state.contentById.set(content.id, merged);
+    return merged;
   }
 
   function cardHTML(card, options = {}) {
@@ -578,6 +513,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const completions = content.completions || 0;
     const score = content.score || likeCount + completions;
     const poster = content.poster || "images/fallback.jpg";
+    const rating = content.rating || 'N/A'; 
 
     const progressMarkup = card.progress
       ? progressHTML(card.progress)
@@ -599,6 +535,9 @@ document.addEventListener("DOMContentLoaded", () => {
           <span><i class="bi bi-heart-fill ${
             liked ? "text-danger" : "text-secondary"
           }"></i> ${formatNumber(likeCount)}</span>
+          
+          <span class="ms-auto"><i class="bi bi-star-fill text-white"></i> ${rating}</span>
+
         </div>
         <p class="flyout-text">${escapeHtml(content.info || "")}</p>
     </div>
@@ -607,9 +546,9 @@ document.addEventListener("DOMContentLoaded", () => {
   return `
       <article class="media-card" data-id="${content.id}">
         ${flyout}
-      <img class="media-thumb" src="${poster}" alt="${escapeHtml(
+        <img class="media-thumb" src="${poster}" alt="${escapeHtml(
       content.title
-    )}" onerror="this.onerror=null;this.src='/images/fallback.jpg';">
+    )}" onerror="this.src='images/fallback.jpg'">
       <div class="media-body">
           <h3 class="media-title" title="${escapeHtml(
             content.title
@@ -620,10 +559,12 @@ document.addEventListener("DOMContentLoaded", () => {
               content.category || "General"
             )}</span>
           </div>
+
           <div class="media-rating mt-1">
               <i class="bi bi-star-fill"></i>
-              <span>${escapeHtml(content.rating || 'N/A')}</span>
+              <span>${rating}</span>
           </div>
+          
           <p class="media-meta mt-2" title="${escapeHtml(
             content.info || ""
           )}">${escapeHtml(content.info || "")}</p>
@@ -767,338 +708,20 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.sections.addEventListener("click", handleSectionClick);
     }
 
-    // Episodes modal close handlers
     if (elements.episodesModalClose) {
       elements.episodesModalClose.addEventListener("click", closeEpisodesModal);
     }
     if (elements.episodesModalOverlay) {
       elements.episodesModalOverlay.addEventListener("click", closeEpisodesModal);
     }
-    // Close modal on Escape key
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && elements.episodesModal.style.display !== "none") {
         closeEpisodesModal();
       }
     });
-  }
-
-  function initPlayerControls() {
-    if (!elements.playerModal || !elements.playerVideo) return;
-
-    const video = elements.playerVideo;
-    const closeTargets = [elements.playerClose, elements.playerOverlay];
-
-    closeTargets.forEach((target) => {
-      if (target) {
-        target.addEventListener("click", () => {
-          closePlayer().catch((error) =>
-            console.error("Failed to close player:", error)
-          );
-        });
-      }
-    });
-
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && state.player.isOpen) {
-        closePlayer().catch((error) =>
-          console.error("Failed to close player:", error)
-        );
-      }
-    });
-
-    video.addEventListener("loadedmetadata", () => {
-      if (!state.player.isOpen) return;
-      const duration = Number.isFinite(video.duration) ? video.duration : 0;
-      if (duration > 0) {
-        state.player.durationSec = duration;
-      }
-      if (state.player.currentPosition > 0 && duration > 0) {
-        const safeStart = Math.min(
-          state.player.currentPosition,
-          Math.max(duration - 1, 0)
-        );
-        try {
-          video.currentTime = safeStart;
-        } catch (err) {
-          console.warn("Unable to set resume point:", err);
-        }
-      }
-      updatePlayerTimeDisplay();
-    });
-
-    video.addEventListener("timeupdate", () => {
-      if (!state.player.isOpen) return;
-      state.player.currentPosition = Number.isFinite(video.currentTime)
-        ? video.currentTime
-        : 0;
-      const duration = Number.isFinite(video.duration) ? video.duration : 0;
-      if (duration > 0) {
-        state.player.durationSec = duration;
-      }
-      updatePlayerTimeDisplay();
-
-      const now = Date.now();
-      if (now - state.player.lastSyncTime > 15000) {
-        syncPlayerProgress("tick");
-      }
-    });
-
-    video.addEventListener("pause", () => {
-      if (!state.player.isOpen) return;
-      if (state.player.suppressSync) {
-        state.player.suppressSync = false;
-        return;
-      }
-      if (Number.isFinite(video.currentTime) && video.currentTime > 0.5) {
-        syncPlayerProgress("pause");
-      }
-    });
-
-    video.addEventListener("ended", () => {
-      if (!state.player.isOpen) return;
-      state.player.suppressSync = true;
-      syncPlayerProgress("ended")
-        .catch((error) => console.error("Failed to complete playback:", error))
-        .finally(() => {
-          closePlayer({ skipSync: true }).catch((error) =>
-            console.error("Failed to close player:", error)
-          );
-        });
-    });
-  }
-
-  function openPlayer(content, options = {}) {
-    if (!content || !elements.playerModal || !elements.playerVideo) return;
-
-    const episode = options.episode || null;
-    const resumeFrom = Math.max(0, options.resumeFrom || 0);
-    const videoSource = normalizeAsset(
-      options.videoUrl ||
-        episode?.videoUrl ||
-        content.videoUrl ||
-        ""
-    );
-
-    if (!videoSource) {
-      alert("No video is available for this title yet. Please try a different one.");
-      return;
-    }
-
-    const subtitleParts = [];
-    if (episode?.title) {
-      subtitleParts.push(episode.title);
-    }
-    if (typeof episode?.season === "number" && typeof episode?.number === "number") {
-      subtitleParts.push(`S${episode.season} · E${episode.number}`);
-    } else if (content.category) {
-      subtitleParts.push(content.category);
-    }
-
-    state.player.isOpen = true;
-    state.player.contentId = content.id;
-    state.player.episodeId = episode?.id || options.episodeId || null;
-    state.player.currentPosition = resumeFrom;
-    state.player.durationSec =
-      options.durationSec ||
-      episode?.durationSec ||
-      state.player.durationSec ||
-      0;
-    state.player.lastSyncTime = Date.now();
-    state.player.syncInFlight = false;
-    state.player.subtitleBase = subtitleParts.join(" • ");
-    state.player.suppressSync = false;
-
-    if (elements.playerTitle) {
-      elements.playerTitle.textContent = content.title || "";
-    }
-    updatePlayerTimeDisplay();
-
-    elements.playerModal.style.display = "flex";
-    elements.playerModal.classList.add("show");
-    elements.playerModal.setAttribute("aria-hidden", "false");
-
-    const video = elements.playerVideo;
-    video.pause();
-    video.removeAttribute("src");
-    video.load();
-    video.poster = content.backdrop || content.poster || "";
-    video.src = videoSource;
-    video.load();
-
-    const handleAutoplay = () => {
-      video.play().catch((err) => {
-        console.warn("Autoplay prevented; user interaction required.", err);
-      });
-    };
-
-    if (video.readyState >= 1) {
-      if (resumeFrom > 0) {
-        try {
-          video.currentTime = resumeFrom;
-        } catch (err) {
-          console.warn("Unable to set resume point:", err);
-        }
-      }
-      handleAutoplay();
-    } else {
-      video.addEventListener(
-        "loadeddata",
-        () => {
-          if (resumeFrom > 0) {
-            try {
-              const duration = Number.isFinite(video.duration)
-                ? video.duration
-                : 0;
-              const safeStart =
-                duration > 0
-                  ? Math.min(resumeFrom, Math.max(duration - 1, 0))
-                  : resumeFrom;
-              video.currentTime = safeStart;
-            } catch (err) {
-              console.warn("Unable to set resume point:", err);
-            }
-          }
-          handleAutoplay();
-        },
-        { once: true }
-      );
-    }
-  }
-
-  async function closePlayer(options = {}) {
-    const { skipSync = false } = options;
-    if (!state.player.isOpen) return;
-
-    if (!skipSync) {
-      try {
-        await syncPlayerProgress("close");
-      } catch (error) {
-        console.error("Failed to sync progress on close:", error);
-      }
-    }
-
-    state.player.isOpen = false;
-    state.player.contentId = null;
-    state.player.episodeId = null;
-    state.player.currentPosition = 0;
-    state.player.durationSec = 0;
-    state.player.lastSyncTime = 0;
-    state.player.syncInFlight = false;
-    state.player.subtitleBase = "";
-    state.player.suppressSync = false;
-
-    if (elements.playerModal) {
-      elements.playerModal.classList.remove("show");
-      elements.playerModal.style.display = "none";
-      elements.playerModal.setAttribute("aria-hidden", "true");
-    }
-
-    if (elements.playerVideo) {
-      const video = elements.playerVideo;
-      video.pause();
-      video.removeAttribute("src");
-      video.removeAttribute("poster");
-      video.load();
-    }
-
-    if (elements.playerTitle) {
-      elements.playerTitle.textContent = "";
-    }
-    if (elements.playerSubtitle) {
-      elements.playerSubtitle.textContent = "";
-    }
-  }
-
-  async function syncPlayerProgress(reason = "tick") {
-    if (!state.player.isOpen || !state.player.contentId) return null;
-    if (!elements.playerVideo) return null;
-
-    const video = elements.playerVideo;
-    const position = Number.isFinite(video.currentTime)
-      ? video.currentTime
-      : 0;
-    const duration =
-      (Number.isFinite(video.duration) && video.duration > 0
-        ? video.duration
-        : state.player.durationSec) || 0;
-
-    if (reason === "tick") {
-      const now = Date.now();
-      if (now - state.player.lastSyncTime < 10000) return null;
-    }
-
-    if (state.player.syncInFlight) return null;
-    if (position <= 0 && reason !== "ended") return null;
-
-    const payload = {
-      contentId: state.player.contentId,
-      episodeId: state.player.episodeId,
-      lastPositionSec: Math.round(position),
-      durationSec: Math.round(duration),
-      status: reason === "ended" ? "done" : "in_progress",
-      event:
-        reason === "ended"
-          ? "complete"
-          : reason === "pause" || reason === "close"
-          ? "pause"
-          : "progress",
-    };
-
-    state.player.syncInFlight = true;
-    try {
-      const updated = await persistProgress(payload, {
-        silent: reason === "tick",
-      });
-      state.player.lastSyncTime = Date.now();
-      if (updated?.durationSec) {
-        state.player.durationSec = updated.durationSec;
-      }
-      return updated;
-    } catch (error) {
-      console.error("Failed to sync playback progress:", error);
-      return null;
-    } finally {
-      state.player.syncInFlight = false;
-    }
-  }
-
-  function updatePlayerTimeDisplay() {
-    if (!elements.playerSubtitle) return;
-    const meta = [];
-    if (state.player.subtitleBase) {
-      meta.push(state.player.subtitleBase);
-    }
-    if (state.player.durationSec > 0) {
-      meta.push(
-        `${formatTime(state.player.currentPosition || 0)} / ${formatTime(
-          state.player.durationSec
-        )}`
-      );
-    }
-    elements.playerSubtitle.textContent = meta.join(" • ");
-  }
-
-  function normalizeEpisodeData(rawEpisode) {
-    if (!rawEpisode) return null;
-    const id =
-      rawEpisode._id?.toString?.() ||
-      rawEpisode.id ||
-      rawEpisode.episodeId ||
-      null;
-    return {
-      id,
-      title: rawEpisode.title || "",
-      season:
-        typeof rawEpisode.season === "number"
-          ? rawEpisode.season
-          : Number(rawEpisode.season) || null,
-      number:
-        typeof rawEpisode.episode === "number"
-          ? rawEpisode.episode
-          : Number(rawEpisode.number) || null,
-      videoUrl: normalizeAsset(rawEpisode.videoUrl || ""),
-      durationSec: rawEpisode.durationSec || 0,
-    };
+    
+    // האירועים של הנגן יחוברו על ידי bindPlayerEvents()
+    // ברגע שהנגן ייפתח
   }
 
   async function performSearch(query) {
@@ -1160,70 +783,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const contentId = card.dataset.id;
       const content = state.contentById.get(contentId);
       if (content) {
-        renderHero(content);
-        // Open content modal for both series and movies
-    openContentModal(content);
+        openContentModal(content);
       }
-    }
-  }
-
-  async function persistProgress(payload, options = {}) {
-    const { silent = false } = options;
-    const body = { ...payload };
-
-    if (
-      typeof body.watchPercentage === "undefined" &&
-      typeof body.lastPositionSec === "number" &&
-      typeof body.durationSec === "number" &&
-      body.durationSec > 0
-    ) {
-      body.watchPercentage = Math.min(
-        100,
-        Math.max(0, Math.round((body.lastPositionSec / body.durationSec) * 100))
-      );
-    }
-
-    const response = await fetch(
-      `/api/profiles/${state.profileId}/progress`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Progress update failed with status ${response.status}`);
-    }
-
-    const result = await response.json();
-    if (result?.progress) {
-      applyProgressUpdate(result.progress, { silent });
-      return result.progress;
-    }
-    return null;
-  }
-
-  function applyProgressUpdate(progressEntry, options = {}) {
-    if (!progressEntry?.content?.id) return;
-    const { silent = false } = options;
-
-    state.progressMap.set(progressEntry.content.id, progressEntry);
-
-    const list = state.sections.continueWatching || [];
-    const idx = list.findIndex(
-      (entry) => entry.content?.id === progressEntry.content.id
-    );
-    if (idx >= 0) {
-      list[idx] = progressEntry;
-    } else {
-      list.unshift(progressEntry);
-    }
-    state.sections.continueWatching = list;
-
-    if (!silent) {
-      buildIndices();
-      renderSections();
     }
   }
 
@@ -1318,63 +879,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const content = state.contentById.get(contentId);
     if (!content) return;
 
-    try {
-      renderHero(content);
-      const progress = state.progressMap.get(contentId);
-      const lastPosition = progress?.lastPositionSec || 0;
-      const durationSec = progress?.durationSec || 0;
-      const payload = {
-        contentId,
-        episodeId: progress?.episode?.id || null,
-        lastPositionSec: lastPosition,
-        durationSec,
-        status: "in_progress",
-        event: "start",
-      };
-
-      const updated = await persistProgress(payload);
-      const resumeEntry = updated || progress || null;
-
-      const resumeFrom =
-        resumeEntry?.resumePositionSec ??
-        Math.max(
-          (resumeEntry?.lastPositionSec ||
-            progress?.lastPositionSec ||
-            0) - 10,
-          0
-        );
-
-      const episode = resumeEntry?.episode || progress?.episode || null;
-      let videoUrl =
-        episode?.videoUrl ||
-        content.videoUrl ||
-        "";
-
-      if (!videoUrl) {
-        const hydrated = await ensureContentHydrated(content.id);
-        videoUrl =
-          episode?.videoUrl ||
-          hydrated?.videoUrl ||
-          "";
-      }
-
-      if (!videoUrl) {
-        alert("No video is available for this title yet. Please try a different one.");
-        return;
-      }
-
-      const effectiveDuration =
-        resumeEntry?.durationSec || progress?.durationSec || 0;
-
-      openPlayer(content, {
-        resumeFrom,
-        durationSec: effectiveDuration,
-        episode,
-        videoUrl,
-      });
-    } catch (error) {
-      console.error("Failed to start playback:", error);
-      alert("Unable to start playback right now. Please try again later.");
+    if (content.type === 'movie') {
+      startPlayback(content);
+    } else {
+      openContentModal(content);
     }
   }
 
@@ -1383,69 +891,23 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!content) return;
 
     try {
-      renderHero(content);
-      let episode = null;
-
+      let episodeId = null;
+      
       if (content.type === "series") {
-        try {
-          const response = await fetch(
-            `/api/content/${contentId}/first-episode`
-          );
-          if (response.ok) {
-            const firstEpisode = await response.json();
-            episode = normalizeEpisodeData(firstEpisode);
-          } else if (response.status !== 404) {
-            console.warn("Could not load first episode:", response.status);
-          }
-        } catch (error) {
-          console.warn("Failed to fetch first episode:", error);
+        const response = await fetch(
+          `/api/content/${contentId}/first-episode`
+        );
+        if (response.ok) {
+          const firstEpisode = await response.json();
+          episodeId = firstEpisode.id;
+        } else {
+           throw new Error('Could not find first episode');
         }
       }
+      
+      closeEpisodesModal();
+      startPlayback(content, episodeId); 
 
-      const payload = {
-        contentId,
-        episodeId: episode?.id || null,
-        lastPositionSec: 0,
-        durationSec: episode?.durationSec || 0,
-        watchPercentage: 0,
-        status: "in_progress",
-        event: "start",
-      };
-
-      const updated = await persistProgress(payload);
-
-      const durationSec =
-        updated?.durationSec || episode?.durationSec || 0;
-      const episodeForPlayer =
-        (updated?.episode && {
-          ...updated.episode,
-          videoUrl: updated.episode.videoUrl || episode?.videoUrl || "",
-        }) ||
-        episode ||
-        null;
-
-      let videoUrl =
-        episodeForPlayer?.videoUrl || content.videoUrl || "";
-
-      if (!videoUrl) {
-        const hydrated = await ensureContentHydrated(content.id);
-        videoUrl =
-          episodeForPlayer?.videoUrl ||
-          hydrated?.videoUrl ||
-          "";
-      }
-
-      if (!videoUrl) {
-        alert("No video is available for this title yet. Please try a different one.");
-        return;
-      }
-
-      openPlayer(content, {
-        resumeFrom: 0,
-        durationSec,
-        episode: episodeForPlayer,
-        videoUrl,
-      });
     } catch (error) {
       console.error("Failed to start from beginning:", error);
       alert("Unable to start playback from the beginning. Please try again.");
@@ -1453,61 +915,61 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function bindArrows(viewportId) {
-    const viewport = document.getElementById(viewportId);
+  const viewport = document.getElementById(viewportId);
     if (!viewport || viewport.dataset.bound === "1") return;
 
-    const section = viewport.parentElement;
-    const prev = section.querySelector(".arrow-btn.prev");
-    const next = section.querySelector(".arrow-btn.next");
-    const strip = viewport.querySelector(".carousel-strip");
-    const isCircular = strip?.dataset.isCircular === "true";
-
-    const getOriginalLength = () =>
-      strip ? parseInt(strip.dataset.originalLength || "0", 10) : 0;
-    const getCloneCount = () =>
-      strip ? parseInt(strip.dataset.cloneCount || "0", 10) : 0;
-
-    const getCardWidth = () => getCardWidthForStrip(strip, viewport);
-
-    const jumpWithoutAnimation = (position) => {
-      const previousBehavior = viewport.style.scrollBehavior;
-      viewport.style.scrollBehavior = "auto";
-      viewport.scrollLeft = position;
-      viewport.style.scrollBehavior = previousBehavior || "";
-    };
-
-    const ensureCircularBounds = () => {
-      const originalLength = getOriginalLength();
-      const cloneCount = getCloneCount();
-      if (!isCircular || !originalLength || cloneCount === 0) return;
-      const cardWidth = getCardWidth();
-      const cloneWidth = cardWidth * cloneCount;
-      const contentWidth = cardWidth * originalLength;
-      const leftBoundary = cloneWidth;
-      const rightBoundary = cloneWidth + contentWidth;
-      const threshold = cardWidth / 2;
-
-      if (viewport.scrollLeft >= rightBoundary - threshold) {
-        jumpWithoutAnimation(viewport.scrollLeft - contentWidth);
-      } else if (viewport.scrollLeft <= leftBoundary - threshold) {
-        jumpWithoutAnimation(viewport.scrollLeft + contentWidth);
-      }
-    };
+  const section = viewport.parentElement;
+  const prev = section.querySelector(".arrow-btn.prev");
+  const next = section.querySelector(".arrow-btn.next");
+  const strip = viewport.querySelector(".carousel-strip");
+  const isCircular = strip?.dataset.isCircular === "true";
+  const originalLength = strip ? parseInt(strip.dataset.originalLength, 10) : 0;
+  let isWrapping = false;
+  let scrollTimeout = null;
 
     const updateDisabled = () => {
-      if (prev) prev.disabled = false;
-      if (next) next.disabled = false;
-      const hasScrollRoom = viewport.scrollWidth - viewport.clientWidth > 2;
-      const showArrows = isCircular ? hasScrollRoom : viewport.scrollWidth - viewport.clientWidth > 2;
-
-      if (prev) {
-        prev.style.visibility = showArrows ? "visible" : "hidden";
-      }
-      if (next) {
-        next.style.visibility = showArrows ? "visible" : "hidden";
-      }
-
-      if (!isCircular) {
+      if (isCircular && originalLength > 0) {
+        if (prev) prev.disabled = false;
+        if (next) next.disabled = false;
+        
+        if (!isWrapping) {
+          const firstCard = strip.querySelector('.media-card');
+          let cardWidth;
+          if (firstCard) {
+            cardWidth = firstCard.offsetWidth + 12; 
+          } else {
+            cardWidth = viewport.clientWidth / 7;
+          }
+          
+          const totalWidth = originalLength * cardWidth;
+          const scrollLeft = viewport.scrollLeft;
+          const scrollWidth = viewport.scrollWidth;
+          const clientWidth = viewport.clientWidth;
+          const maxScroll = scrollWidth - clientWidth;
+          
+          const threshold = 100; 
+          if (maxScroll > 0 && scrollLeft >= maxScroll - threshold) {
+            isWrapping = true;
+            viewport.style.scrollBehavior = 'auto';
+            const offset = Math.max(0, scrollLeft - maxScroll);
+            viewport.scrollLeft = offset;
+            setTimeout(() => {
+              viewport.style.scrollBehavior = 'smooth';
+              isWrapping = false;
+            }, 50);
+          }
+          else if (scrollLeft <= threshold && maxScroll > 0) {
+            isWrapping = true;
+            viewport.style.scrollBehavior = 'auto';
+            const offset = Math.max(0, scrollLeft);
+            viewport.scrollLeft = maxScroll - offset;
+            setTimeout(() => {
+              viewport.style.scrollBehavior = 'smooth';
+              isWrapping = false;
+            }, 50);
+          }
+        }
+      } else {
         const maxScroll = viewport.scrollWidth - viewport.clientWidth;
         if (prev) prev.disabled = viewport.scrollLeft <= 1;
         if (next) next.disabled = viewport.scrollLeft >= maxScroll - 1;
@@ -1515,61 +977,50 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const page = () => {
-      const cardWidth = getCardWidth();
-      return cardWidth > 0 ? cardWidth * 7 : viewport.clientWidth;
+      const firstCard = strip?.querySelector('.media-card');
+      if (firstCard) {
+        const cardWidth = firstCard.offsetWidth + 12; 
+        return cardWidth * 7; 
+      }
+      return viewport.clientWidth;
     };
 
     if (prev) {
       prev.addEventListener("click", () => {
-        viewport.scrollBy({
-          left: -page(),
-          behavior: "smooth",
+        const scrollAmount = -page();
+        viewport.scrollBy({ 
+          left: scrollAmount, 
+          behavior: "smooth" 
         });
-        setTimeout(() => {
-          ensureCircularBounds();
-          updateDisabled();
-        }, 350);
+        setTimeout(updateDisabled, 400);
       });
     }
 
     if (next) {
       next.addEventListener("click", () => {
-        viewport.scrollBy({
-          left: page(),
-          behavior: "smooth",
+        const scrollAmount = page();
+        viewport.scrollBy({ 
+          left: scrollAmount, 
+          behavior: "smooth" 
         });
-        setTimeout(() => {
-          ensureCircularBounds();
-          updateDisabled();
-        }, 350);
+        setTimeout(updateDisabled, 400);
       });
     }
 
-    let rafId = null;
-    viewport.addEventListener(
-      "scroll",
-      () => {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(() => {
-          ensureCircularBounds();
-          updateDisabled();
-        });
-      },
-      { passive: true }
-    );
-
+  let rafId = null;
+  viewport.addEventListener("scroll", () => {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      updateDisabled();
+    });
+  }, { passive: true });
+  
     if (window.ResizeObserver) {
-      const observer = new ResizeObserver(() => {
-        ensureCircularBounds();
-        updateDisabled();
-      });
-      observer.observe(viewport);
+      new ResizeObserver(updateDisabled).observe(viewport);
     }
-
-    viewport.dataset.bound = "1";
-    ensureCircularBounds();
-    updateDisabled();
-  }
+  viewport.dataset.bound = "1";
+  updateDisabled();
+}
 
   function setupInfiniteScroll(viewportId, genre) {
     const viewport = document.getElementById(viewportId);
@@ -1588,20 +1039,17 @@ document.addEventListener("DOMContentLoaded", () => {
         const clientWidth = viewport.clientWidth;
         const scrollPercentage = (scrollLeft + clientWidth) / scrollWidth;
 
-        // Load more when scrolled 70% to the right (for circular carousel, check middle section)
         const pagination = state.genrePagination[genre];
         if (pagination && pagination.hasMore && !pagination.loading) {
           const strip = viewport.querySelector(".carousel-strip");
           const isCircular = strip?.dataset.isCircular === "true";
           
           if (isCircular) {
-            // For circular carousel, check if we're near the end (70% scrolled)
             const scrollWidth = viewport.scrollWidth;
             const clientWidth = viewport.clientWidth;
             const maxScroll = scrollWidth - clientWidth;
             const scrollPercentage = maxScroll > 0 ? scrollLeft / maxScroll : 0;
             
-            // Load more when scrolled 70% to the right
             if (scrollPercentage > 0.7) {
               isLoading = true;
               loadMoreGenreContent(genre, viewportId).finally(() => {
@@ -1609,7 +1057,6 @@ document.addEventListener("DOMContentLoaded", () => {
               });
             }
           } else {
-            // For non-circular carousel, use percentage
             if (scrollPercentage > 0.7) {
               isLoading = true;
               loadMoreGenreContent(genre, viewportId).finally(() => {
@@ -1635,7 +1082,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     } catch (error) {
-      // Silently fail - will be checked when user scrolls
       console.debug("Pre-check for more content failed:", error);
     }
   }
@@ -1664,14 +1110,12 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // Merge new items into state
       newItems.forEach((item) => {
         mergeContent(item);
         const genreKey = item.category || genre;
         if (!state.sections.newestByGenre[genreKey]) {
           state.sections.newestByGenre[genreKey] = [];
         }
-        // Avoid duplicates
         const exists = state.sections.newestByGenre[genreKey].some(
           (existing) => existing.id === item.id || (existing.content && existing.content.id === item.id)
         );
@@ -1680,18 +1124,22 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      // Update pagination state
       pagination.page = nextPage;
       pagination.hasMore = data.hasMore || false;
       pagination.loading = false;
 
-      // Append new items to the carousel
       const viewport = document.getElementById(viewportId);
       if (viewport) {
         const strip = viewport.querySelector(".carousel-strip");
         if (strip && strip.dataset.isCircular === "true") {
+          const originalLength = parseInt(strip.dataset.originalLength, 10);
+          const currentScroll = viewport.scrollLeft;
+          const cardWidth = viewport.clientWidth / 7;
+          const originalWidth = originalLength * cardWidth;
+          
           const genreKey = genre;
           const allItems = state.sections.newestByGenre[genreKey] || [];
+          
           const allCards = allItems.map((item) => {
             const merged = mergeContent(item);
             return {
@@ -1700,49 +1148,26 @@ document.addEventListener("DOMContentLoaded", () => {
               progress: null,
             };
           });
-
-          const currentScroll = viewport.scrollLeft;
-          const previousCloneCount = parseInt(strip.dataset.cloneCount || "0", 10);
-          const previousCardWidth = getCardWidthForStrip(strip, viewport);
-          const previousCloneWidth = previousCardWidth * previousCloneCount;
-          const relativePosition = Math.max(currentScroll - previousCloneWidth, 0);
-
-          const enableLoop = shouldLoopSection(allCards, { allowSort: false });
-          if (enableLoop) {
-            const { markup, cloneCount } = buildCircularMarkup(allCards, { allowSort: false });
-            strip.innerHTML = markup;
-            strip.dataset.cloneCount = cloneCount.toString();
-            strip.dataset.isCircular = "true";
-          } else {
-            strip.innerHTML = allCards
-              .map((card) =>
-                cardHTML(card, {
-                  allowSort: false,
-                })
-              )
-              .join("");
-            strip.dataset.cloneCount = "0";
-            strip.dataset.isCircular = "false";
-          }
+          
+          strip.innerHTML = allCards.map((card) => cardHTML(card, { allowSort: false })).join("");
           strip.dataset.originalLength = allCards.length.toString();
 
-          const newCardWidth = getCardWidthForStrip(strip, viewport);
-          const contentWidth = newCardWidth * allItems.length;
-          const maxRelative = Math.max(contentWidth - viewport.clientWidth, 0);
-          const clampedRelative = Math.min(relativePosition, maxRelative);
-          const cloneCount = parseInt(strip.dataset.cloneCount || "0", 10);
-          const targetScroll = enableLoop
-            ? newCardWidth * cloneCount + clampedRelative
-            : clampedRelative;
-
-          const previousBehavior = viewport.style.scrollBehavior;
-          viewport.style.scrollBehavior = "auto";
-          viewport.scrollLeft = targetScroll;
-          viewport.style.scrollBehavior = previousBehavior || "";
-
-          // Trigger a scroll update to refresh arrow state
-          viewport.dispatchEvent(new Event("scroll"));
-        } else if (strip) {
+          const firstCard = strip.querySelector('.media-card');
+          let newCardWidth;
+          if (firstCard) {
+            newCardWidth = firstCard.offsetWidth + 12; 
+          } else {
+            newCardWidth = viewport.clientWidth / 7;
+          }
+          
+          const newScrollWidth = allCards.length * newCardWidth;
+          const newMaxScroll = newScrollWidth - viewport.clientWidth;
+          viewport.scrollLeft = Math.min(currentScroll, newMaxScroll);
+          
+          setTimeout(() => {
+            bindArrows(viewportId);
+          }, 50);
+        } else {
           const cards = newItems.map((item) => {
             const merged = mergeContent(item);
             return cardHTML(
@@ -1766,12 +1191,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function applyGenreFilter(items) {
     let filtered = items;
     
-    // Filter by category
     if (state.filter !== "all") {
       filtered = filtered.filter((item) => item.category === state.filter);
     }
     
-    // Filter by watched status
     if (state.watchedFilter !== "all") {
       filtered = filtered.filter((item) => {
         const hasProgress = state.progressMap.has(item.id);
@@ -1792,52 +1215,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function normalizeAsset(value) {
     if (!value || typeof value !== "string") return "";
-
-    let normalized = value.trim();
-    if (!normalized) return "";
-
-    if (/^https?:\/\//i.test(normalized)) return normalized;
-
-    normalized = normalized.replace(/\\/g, "/");
-    normalized = normalized.replace(/^(\.\.\/)+/, "");
-    normalized = normalized.replace(/^\.\//, "");
-    normalized = normalized.replace(/^public\//i, "");
-    normalized = normalized.replace(/^\/?public\//i, "");
-
-    if (!normalized.startsWith("/")) {
-      normalized = `/${normalized}`;
-    }
-
-    return normalized.replace(/\/{2,}/g, "/");
-  }
-
-  function storeContentRecord(incoming) {
-    if (!incoming || !incoming.id) return null;
-    const existing = state.contentById.get(incoming.id) || {};
-    const merged = {
-      ...existing,
-      ...incoming,
-    };
-
-    merged.poster = normalizeAsset(merged.poster || existing.poster || "");
-    merged.backdrop = normalizeAsset(merged.backdrop || existing.backdrop || "");
-    merged.videoUrl = normalizeAsset(merged.videoUrl || existing.videoUrl || "");
-    merged.category = merged.category || existing.category || "General";
-    merged.type = merged.type || existing.type || "movie";
-    merged.info = merged.info || existing.info || "";
-    merged.likes =
-      typeof merged.likes === "number"
-        ? merged.likes
-        : typeof existing.likes === "number"
-        ? existing.likes
-        : 0;
-    merged.totalLikes = merged.likes;
-    merged.score = merged.score || existing.score || 0;
-    merged.completions = merged.completions || existing.completions || 0;
-    merged.actors = merged.actors || existing.actors || [];
-
-    state.contentById.set(incoming.id, merged);
-    return merged;
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith("/")) return value;
+    return `/${value.replace(/^\.?\//, "")}`;
   }
 
   function formatNumber(value) {
@@ -1877,30 +1257,24 @@ document.addEventListener("DOMContentLoaded", () => {
   async function openContentModal(content) {
     if (!content || !elements.episodesModal) return;
 
-    // Get the full content data from state (includes actors)
     let fullContent = state.contentById.get(content.id) || content;
 
-    // Always try to fetch fresh content from API to ensure we have actors
     try {
       const response = await fetch(`/api/content/${content.id}`);
       if (response.ok) {
         const apiContent = await response.json();
         if (apiContent) {
-          // Merge API data with existing data
-          fullContent =
-            storeContentRecord({ ...fullContent, ...apiContent }) ||
-            { ...fullContent, ...apiContent };
+          fullContent = { ...fullContent, ...apiContent };
+          state.contentById.set(content.id, fullContent);
         }
       }
     } catch (error) {
       console.warn("Could not fetch content details from API, using cached data:", error);
     }
-
-    // Debug: log actors
-    console.log("Content actors:", fullContent.actors, "for content:", fullContent.title);
-    console.log("Full content object:", fullContent);
-
-    // Set modal title and info
+    
+    fullContent.rating = fullContent.rating || 'N/A';
+    state.contentById.set(content.id, fullContent);
+    
     elements.episodesModalTitle.textContent = fullContent.title || "";
     const metaParts = [];
     if (fullContent.year) metaParts.push(fullContent.year);
@@ -1908,15 +1282,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fullContent.category) metaParts.push(fullContent.category);
     elements.episodesModalInfo.textContent = metaParts.join(" · ") || "";
 
-    // Show modal
     elements.episodesModal.style.display = "flex";
 
-    // Render content info and actors first
     renderContentInfo(fullContent);
 
-    // If it's a series, load and render episodes
     if (fullContent.type === "series") {
-      // Show loading indicator for episodes
       const loadingHtml = '<div class="episodes-loading">Loading episodes...</div>';
       elements.episodesModalBody.insertAdjacentHTML("beforeend", loadingHtml);
 
@@ -1940,7 +1310,6 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-        // Render episodes grouped by season
         renderEpisodes(episodes, fullContent);
       } catch (error) {
         console.error("Error loading episodes:", error);
@@ -1952,19 +1321,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     } else {
-      // For movies, show play button
       renderMovieActions(fullContent);
     }
   }
 
   function renderContentInfo(content) {
     if (!content || !elements.episodesModalBody) return;
-
-    // Debug: log to see what we have
-    console.log("Rendering content info for:", content.title);
-    console.log("Actors data:", content.actors);
-    console.log("Actors type:", typeof content.actors);
-    console.log("Actors length:", content.actors?.length);
 
     const actors = Array.isArray(content.actors) ? content.actors : [];
     const hasActors = actors.length > 0;
@@ -2034,12 +1396,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     elements.episodesModalBody.insertAdjacentHTML("beforeend", actionsHtml);
 
-    // Add event handlers
     const playBtn = elements.episodesModalBody.querySelector(".movie-play-btn");
     if (playBtn) {
       playBtn.addEventListener("click", () => {
         closeEpisodesModal();
-        handlePlay(content.id);
+        startPlayback(content); 
       });
     }
 
@@ -2062,7 +1423,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderEpisodes(episodes, content) {
     if (!episodes || episodes.length === 0 || !elements.episodesModalBody) return;
 
-    // Group episodes by season
     const seasons = {};
     episodes.forEach((episode) => {
       const season = episode.season || 1;
@@ -2072,7 +1432,6 @@ document.addEventListener("DOMContentLoaded", () => {
       seasons[season].push(episode);
     });
 
-    // Sort seasons
     const sortedSeasons = Object.keys(seasons).sort((a, b) => Number(a) - Number(b));
 
     let html = `<div class="episodes-section">`;
@@ -2119,7 +1478,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     elements.episodesModalBody.insertAdjacentHTML("beforeend", html);
 
-    // Add click handlers for episodes
     elements.episodesModalBody.querySelectorAll(".episode-play-btn, .episode-item").forEach((element) => {
       element.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -2133,79 +1491,335 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function handleEpisodePlay(contentId, episodeId) {
+    const content = state.contentById.get(contentId);
+    if (!content) {
+        alert("Error: Content not found.");
+        return;
+    }
+    
+    closeEpisodesModal(); 
+    startPlayback(content, episodeId); 
+  }
+  
+  
+  // --- 👇 כל פונקציות הנגן החדשות מתחילות כאן 👇 ---
+  
+  async function startPlayback(content, episodeId = null) {
+    if (!content) return;
+
+    // איתור רכיבי הנגן ברגע הלחיצה
+    const playerModal = document.getElementById("playerModal");
+    const playerWrapper = document.querySelector(".player-wrapper");
+    const videoPlayer = document.getElementById("playerVideo");
+    const playerTitle = document.getElementById("playerTitle");
+    const playerSubtitle = document.getElementById("playerSubtitle");
+    
+    if (!playerModal || !videoPlayer) {
+        console.error("CRITICAL ERROR: Player elements (playerModal, videoPlayer) not found in main.html!");
+        return;
+    }
+    
+    let videoUrl = null;
+    let episodeTitle = null;
+    
+    allEpisodes = [];
+    currentEpisodeId = null;
+    playerWrapper.dataset.type = content.type; 
+
+    if (content.type === 'series') {
+        if (!episodeId) {
+            try {
+                const response = await fetch(`/api/content/${content.id}/first-episode`);
+                if (response.ok) {
+                    const firstEpisode = await response.json();
+                    episodeId = firstEpisode.id;
+                    videoUrl = firstEpisode.videoUrl;
+                    episodeTitle = firstEpisode.title;
+                } else {
+                    throw new Error('No first episode found');
+                }
+            } catch (err) {
+                alert('Could not load first episode.');
+                return;
+            }
+        } else {
+            const episodes = await fetchEpisodes(content.id); 
+            const episode = episodes.find(e => (e._id || e.id) === episodeId);
+            if (episode) {
+                videoUrl = episode.videoUrl;
+                episodeTitle = episode.title;
+            } else {
+                alert('Episode not found.');
+                return;
+            }
+        }
+        
+        await populateEpisodeDrawer(content.id, episodeId);
+        currentEpisodeId = episodeId;
+        
+    } else {
+        videoUrl = content.videoUrl; 
+        const episodeDrawer = document.getElementById("episodeDrawer");
+        if (episodeDrawer) episodeDrawer.classList.remove('visible'); 
+    }
+
+    if (!videoUrl) {
+        videoUrl = content.videoUrl || null;
+        if (!videoUrl) {
+            alert('Video file not found for this content.');
+            return;
+        }
+    }
+    
+    videoPlayer.src = videoUrl;
+    playerTitle.textContent = content.title || '';
+    playerSubtitle.textContent = episodeTitle || ''; 
+    
+    playerModal.classList.add('show'); 
+    
     try {
-      const episodesResponse = await fetch(`/api/content/${contentId}/episodes`);
-      if (!episodesResponse.ok) {
-        throw new Error("Failed to get episode details");
-      }
+        await videoPlayer.play();
+    } catch (playError) {
+        console.error("Play failed (usually requires user interaction):", playError);
+    }
 
-      const episodes = await episodesResponse.json();
-      const episodeRaw = episodes.find(
-        (e) => (e._id?.toString() || e.id) === episodeId
-      );
+    // חיבור האירועים (רק פעם אחת)
+    if (!playerEventsBound) {
+        bindPlayerEvents();
+        playerEventsBound = true;
+    }
+  }
 
-      if (!episodeRaw) {
-        throw new Error("Episode not found");
-      }
+  /**
+   * מחבר את כל האירועים לכפתורי הנגן
+   */
+  function bindPlayerEvents() {
+    console.log("DEBUG: Binding player events NOW."); // נוודא שזה רץ
+    
+    // איתור כל הרכיבים מחדש (בטוח)
+    const videoPlayer = document.getElementById("playerVideo");
+    const playerClose = document.getElementById("playerClose");
+    const playerOverlay = document.getElementById("playerOverlay");
+    const playPauseBtn = document.getElementById("playPauseBtn");
+    const rewindBtn = document.getElementById("rewindBtn");
+    const forwardBtn = document.getElementById("forwardBtn");
+    const timeline = document.getElementById("timeline");
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
+    const playerWrapper = document.querySelector(".player-wrapper");
+    const nextEpisodeBtn = document.getElementById("nextEpisodeBtn");
+    const episodeListBtn = document.getElementById("episodeListBtn");
+    const episodeDrawer = document.getElementById("episodeDrawer");
+    const episodeListContainer = document.getElementById("episodeListContainer");
 
-      const normalizedEpisode = normalizeEpisodeData(episodeRaw);
+    // סגירת הנגן
+    if (playerClose) playerClose.addEventListener('click', stopPlayback);
+    if (playerOverlay) playerOverlay.addEventListener('click', stopPlayback);
 
-      const payload = {
-        contentId,
-        episodeId: normalizedEpisode?.id || episodeId,
-        lastPositionSec: 0,
-        durationSec: normalizedEpisode?.durationSec || 0,
-        watchPercentage: 0,
-        status: "in_progress",
-        event: "start",
-      };
-
-      const updated = await persistProgress(payload);
-
-      const content = state.contentById.get(contentId);
-      if (content) {
-        renderHero(content);
-        const episodeForPlayer =
-          (updated?.episode && {
-            ...updated.episode,
-            videoUrl:
-              updated.episode.videoUrl || normalizedEpisode?.videoUrl || "",
-          }) ||
-          normalizedEpisode;
-
-        let videoUrl =
-          episodeForPlayer?.videoUrl ||
-          content.videoUrl ||
-          normalizedEpisode?.videoUrl ||
-          "";
-
-        if (!videoUrl) {
-          const hydrated = await ensureContentHydrated(content.id);
-          videoUrl =
-            episodeForPlayer?.videoUrl ||
-            hydrated?.videoUrl ||
-            normalizedEpisode?.videoUrl ||
-            "";
-        }
-
-        if (!videoUrl) {
-          alert("No video is available for this title yet. Please try a different one.");
-          return;
-        }
-
-        closeEpisodesModal();
-        openPlayer(content, {
-          resumeFrom: 0,
-          durationSec:
-            updated?.durationSec || normalizedEpisode?.durationSec || 0,
-          episode: episodeForPlayer,
-          videoUrl,
+    // כפתור Play/Pause
+    if (playPauseBtn && videoPlayer) {
+        playPauseBtn.addEventListener('click', () => {
+            if (videoPlayer.paused) {
+                videoPlayer.play();
+            } else {
+                videoPlayer.pause();
+            }
         });
-      }
-    } catch (error) {
-      console.error("Failed to play episode:", error);
-      alert("Unable to start playback. Please try again.");
+        videoPlayer.addEventListener('play', () => {
+            playPauseBtn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+        });
+        videoPlayer.addEventListener('pause', () => {
+            playPauseBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
+        });
+    }
+
+    // חזרה/קדימה 10 שניות
+    if (rewindBtn) {
+      rewindBtn.addEventListener('click', () => {
+        if (videoPlayer) videoPlayer.currentTime -= 10;
+      });
+    }
+    if (forwardBtn) {
+      forwardBtn.addEventListener('click', () => {
+        if (videoPlayer) videoPlayer.currentTime += 10;
+      });
+    }
+
+    // טיימליין
+    if (videoPlayer && timeline) {
+      videoPlayer.addEventListener('timeupdate', () => {
+        const progress = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+        timeline.value = progress || 0;
+      });
+      timeline.addEventListener('input', () => {
+        const newTime = (timeline.value * videoPlayer.duration) / 100;
+        videoPlayer.currentTime = newTime;
+      });
+      videoPlayer.addEventListener('loadedmetadata', () => {
+        timeline.max = 100; 
+      });
+    }
+
+    // מסך מלא
+    if (fullscreenBtn && playerWrapper) {
+    fullscreenBtn.addEventListener('click', () => {
+
+        // בדיקה אם אנחנו כבר במסך מלא
+        if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
+            // יציאה ממסך מלא
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) { // Chrome, Safari
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) { // IE11
+                document.msExitFullscreen();
+            }
+        } else {
+            // כניסה למסך מלא
+            const el = playerWrapper;
+            if (el.requestFullscreen) el.requestFullscreen();
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+            else if (el.msRequestFullscreen) el.msRequestFullscreen();
+        }
+    });
+}
+
+    // פרק הבא
+    if (nextEpisodeBtn) {
+        nextEpisodeBtn.addEventListener('click', playNextEpisode);
+    }
+    if (videoPlayer) {
+        videoPlayer.addEventListener('ended', () => {
+            if (playerWrapper.dataset.type === 'series') {
+                playNextEpisode();
+            } else {
+                stopPlayback(); // אם זה סרט, פשוט סגור את הנגן
+            }
+        });
+    }
+
+    // מגירת פרקים
+    if (episodeListBtn) {
+        episodeListBtn.addEventListener('click', () => {
+            episodeDrawer.classList.toggle('visible');
+        });
+    }
+    if (episodeListContainer) {
+        episodeListContainer.addEventListener('click', handleDrawerEpisodeClick);
+    }
+  }
+
+  /**
+   * סוגר את מודאל הנגן
+   */
+  function stopPlayback() {
+    const videoPlayer = document.getElementById("playerVideo");
+    const playerModal = document.getElementById("playerModal");
+    const episodeDrawer = document.getElementById("episodeDrawer");
+
+    if (videoPlayer) {
+        videoPlayer.pause();
+        videoPlayer.src = ""; 
+    }
+    if (playerModal) {
+        playerModal.classList.remove('show');
+    }
+    if (episodeDrawer) {
+        episodeDrawer.classList.remove('visible'); 
+    }
+  }
+
+  /**
+   * טוען פרקים מה-API
+   */
+  async function fetchEpisodes(contentId) {
+    allEpisodes = []; // נקה מטמון פרקים קודם
+    try {
+        const response = await fetch(`/api/content/${contentId}/episodes`);
+        if (!response.ok) throw new Error('Failed to fetch episodes');
+        allEpisodes = await response.json();
+        return allEpisodes;
+    } catch (err) {
+        console.error(err);
+        return [];
+    }
+  }
+
+  /**
+   * ממלא את מגירת הפרקים ב-HTML
+   */
+  async function populateEpisodeDrawer(contentId, activeEpisodeId) {
+    const episodeListContainer = document.getElementById("episodeListContainer");
+    const episodeListTitle = document.getElementById("episodeListTitle");
+    
+    if (!episodeListContainer || !episodeListTitle) return;
+
+    const episodes = await fetchEpisodes(contentId);
+    episodeListContainer.innerHTML = ""; 
+    
+    const content = state.contentById.get(contentId);
+    episodeListTitle.textContent = content ? content.title : "Episodes";
+    
+    if (episodes.length === 0) {
+        episodeListContainer.innerHTML = "<li>No episodes found.</li>";
+        return;
+    }
+    
+    episodes.forEach(episode => {
+        const epId = episode._id?.toString() || episode.id;
+        const li = document.createElement('li');
+        if (epId === activeEpisodeId) {
+            li.className = 'active'; 
+        }
+        li.innerHTML = `<a href="#" data-episode-id="${epId}" data-content-id="${contentId}">
+            S${episode.season || 1} E${episode.episode || '?'}: ${episode.title}
+        </a>`;
+        episodeListContainer.appendChild(li);
+    });
+  }
+
+  /**
+   * מטפל בלחיצה על פרק במגירה
+   */
+  function handleDrawerEpisodeClick(event) {
+    event.preventDefault();
+    const target = event.target.closest('a');
+    if (!target) return;
+
+    const episodeId = target.dataset.episodeId;
+    const contentId = target.dataset.contentId;
+    const content = state.contentById.get(contentId);
+    
+    if (content && episodeId) {
+        startPlayback(content, episodeId);
+    }
+  }
+
+  /**
+   * מפעיל את הפרק הבא
+   */
+  function playNextEpisode() {
+    if (allEpisodes.length === 0 || !currentEpisodeId) return;
+
+    const currentIndex = allEpisodes.findIndex(e => (e._id || e.id) === currentEpisodeId);
+    if (currentIndex > -1 && currentIndex < allEpisodes.length - 1) {
+        const nextEpisode = allEpisodes[currentIndex + 1];
+        const contentId = nextEpisode.seriesId || (allEpisodes[0] ? allEpisodes[0].seriesId : null); 
+        if (!contentId) {
+            console.error("Could not find contentId for next episode.");
+            stopPlayback();
+            return;
+        }
+        
+        const content = state.contentById.get(contentId);
+        if (content) {
+            startPlayback(content, (nextEpisode._id || nextEpisode.id));
+        } else {
+            console.error("Content not found for next episode:", contentId);
+            stopPlayback();
+        }
+    } else {
+        console.log("End of series or episode not found.");
+        stopPlayback(); 
     }
   }
 });
-
