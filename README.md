@@ -45,6 +45,18 @@ On first launch, seedDatabase.js populates initial data (users, profiles, conten
 
 Ensure MongoDB service is running before starting the server.
 
+### Environment Variables
+
+Create a `.env` file (loaded automatically by `dotenv`) and define the following keys:
+
+```
+MONGO_URI=mongodb://localhost:27017/netflixDB
+SESSION_SECRET=change_me
+OMDB_API_KEY=your_omdb_api_key_here
+```
+
+`OMDB_API_KEY` is required for fetching ratings both in the admin panel and during the seeding process. If it is not set, rating lookups will be skipped gracefully.
+
 # 2. Project Structure
 
 The project follows the MVC (Model-View-Controller) architecture for clean separation of concerns.

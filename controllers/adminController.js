@@ -30,11 +30,16 @@ const saveFile = (file, relativePath) => {
 
 // ---------- Ratings via OMDb ----------
 
-const OMDB_API_KEY = '192707eb';
+const OMDB_API_KEY = process.env.OMDB_API_KEY;
 
 // Prefer IMDb, else convert RottenTomatoes %, else convert Metacritic /100
 async function getOmdbRating({ title, year, type }) {
   try {
+    if (!OMDB_API_KEY) {
+      console.warn('OMDB_API_KEY not set; skipping OMDb rating lookup.');
+      return 'N/A';
+    }
+
     const params = new URLSearchParams({ t: title, apikey: OMDB_API_KEY });
     if (year) params.set('y', String(year));
     if (type === 'movie' || type === 'series') params.set('type', type);

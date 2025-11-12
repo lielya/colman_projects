@@ -222,7 +222,11 @@ const actorsData = {
 async function getRatingForTitle(item) {
   const { title, year, type } = item;
   try {
-    const apiKey = process.env.OMDB_API_KEY || '192707eb'; // use your key even if it equals '192707eb'
+    const apiKey = process.env.OMDB_API_KEY;
+    if (!apiKey) {
+      console.warn(`[Seeder] OMDB_API_KEY not set; skipping rating fetch for "${title}".`);
+      return 'N/A';
+    }
 
     // Build query with disambiguation
     const params = new URLSearchParams({ t: title, apikey: apiKey });
