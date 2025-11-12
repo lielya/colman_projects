@@ -1,2 +1,7 @@
+<<<<<<< HEAD
 node_modules/
 *.DS_Store
+=======
+node_modules/.DS_Store
+**/.DS_Store
+>>>>>>> d19447a (Ignore and untrack .DS_Store files)
