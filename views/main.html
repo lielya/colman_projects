@@ -489,25 +489,535 @@
         font-size: 0.9rem; /* אייקון קטן יותר */
         margin-right: 4px;
     }
+
+    /* ========== RESPONSIVE DESIGN ========== */
+    
+    /* Tablet (768px - 1024px) */
+    @media (max-width: 1024px) {
+      .header {
+        padding: .5rem 2%;
+      }
+      .nav-item a {
+        margin-right: 12px;
+        font-size: 13px;
+      }
+      .carousel-section {
+        padding: 0 35px;
+      }
+      .carousel-strip {
+        grid-auto-columns: calc((100% - (12px * 5)) / 6); /* 6 cards per view */
+      }
+      .hero {
+        height: 40vh;
+        min-height: 250px;
+        padding: 2% 3%;
+      }
+      .feed-sections {
+        padding: 0 2% 40px;
+      }
+      .row-title {
+        font-size: 1.2rem;
+        margin: 12px 2% 6px;
+      }
+    }
+
+    /* Mobile (up to 768px) */
+    @media (max-width: 768px) {
+      body {
+        background-attachment: scroll; /* Better performance on mobile */
+      }
+      
+      /* Header adjustments */
+      .header {
+        padding: .5rem 3%;
+      }
+      .logo {
+        height: 24px;
+      }
+      .nav-menu {
+        display: none !important; /* Hide nav menu on mobile - can be toggled if needed */
+      }
+      .nav-menu.mobile-visible {
+        display: flex !important;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.98);
+        flex-direction: column;
+        padding: 3rem 1rem 1rem;
+        z-index: 999;
+        overflow-y: auto;
+      }
+      .mobile-menu-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1001;
+      }
+      .mobile-menu-toggle:hover {
+        opacity: 0.7;
+      }
+      .mobile-menu-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: none;
+        border: none;
+        color: #fff;
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 5px;
+        z-index: 1000;
+      }
+      .mobile-menu-close:hover {
+        opacity: 0.7;
+      }
+      .nav-list {
+        flex-direction: column !important;
+        width: 100%;
+      }
+      .nav-item {
+        width: 100%;
+        margin: 0;
+        padding: 0.5rem 0;
+      }
+      .nav-item a {
+        margin-right: 0;
+        font-size: 14px;
+        display: block;
+        padding: 0.5rem 0;
+      }
+      #welcome-text {
+        font-size: 12px;
+        margin-right: 4px;
+        display: none; /* Hide on very small screens */
+      }
+      .icons a {
+        margin-left: 10px;
+        font-size: 14px;
+      }
+      .profile {
+        width: 28px;
+        height: 28px;
+      }
+      .search-wrap {
+        position: absolute;
+        right: 50px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      #searchInput {
+        min-width: 150px;
+        font-size: 14px;
+      }
+
+      /* Hero section */
+      .hero {
+        height: 35vh;
+        min-height: 200px;
+        max-height: 300px;
+        padding: 2% 3%;
+      }
+      .hero-content {
+        max-width: 100%;
+      }
+      .hero-title {
+        font-size: clamp(18px, 5vw, 28px);
+        margin-bottom: 6px;
+      }
+      .hero-meta {
+        font-size: clamp(11px, 2.5vw, 14px);
+        margin-bottom: 8px;
+      }
+      .hero-desc {
+        font-size: clamp(11px, 2.5vw, 13px);
+        margin-bottom: 10px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .btn-hero {
+        padding: 6px 12px;
+        font-size: 0.85rem;
+      }
+      .d-flex.gap-2 {
+        flex-wrap: wrap;
+        gap: 8px !important;
+      }
+
+      /* Controls bar */
+      .controls-bar {
+        padding: 10px 3%;
+        gap: 8px;
+      }
+      .controls-bar label {
+        font-size: 12px;
+      }
+      .form-select {
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+      .form-select.form-select-sm {
+        width: 140px !important;
+      }
+
+      /* Feed sections */
+      .feed-sections {
+        padding: 0 3% 40px;
+        gap: 20px;
+      }
+      .row-title {
+        font-size: 1.1rem;
+        margin: 10px 3% 6px;
+      }
+
+      /* Carousel */
+      .carousel-section {
+        padding: 0 20px;
+      }
+      .carousel-strip {
+        grid-auto-columns: calc((100% - (8px * 2)) / 3); /* 3 cards per view on mobile */
+        gap: 8px;
+      }
+      .arrow-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+      }
+      .arrow-btn.prev {
+        left: -5px;
+      }
+      .arrow-btn.next {
+        right: -5px;
+      }
+
+      /* Cards */
+      .media-card {
+        border-radius: 8px;
+      }
+      .media-thumb {
+        height: 100px;
+      }
+      .media-body {
+        padding: 8px;
+      }
+      .media-title {
+        font-size: 0.85rem;
+      }
+      .media-meta {
+        font-size: 0.7rem;
+      }
+      .media-rating {
+        font-size: 0.75rem;
+      }
+      .like-btn {
+        font-size: 1rem;
+      }
+      .like-count {
+        font-size: 0.75rem;
+      }
+      .progress-label {
+        font-size: 0.7rem;
+      }
+      .resume-btn, .watch-from-beginning-btn {
+        font-size: 0.7rem;
+        padding: 3px 6px;
+      }
+
+      /* Flyout */
+      .flyout {
+        width: 240px;
+        padding: 8px;
+      }
+      .flyout-title {
+        font-size: 0.85rem;
+      }
+      .flyout-meta {
+        font-size: 0.7rem;
+      }
+      .flyout-text {
+        font-size: 0.75rem;
+      }
+
+      /* Episodes Modal */
+      .episodes-modal-content {
+        width: 95%;
+        max-height: 90vh;
+      }
+      .episodes-modal-header {
+        padding: 20px 20px 15px;
+      }
+      .episodes-modal-title {
+        font-size: 1.4rem;
+      }
+      .episodes-modal-info {
+        font-size: 0.85rem;
+      }
+      .episodes-modal-body {
+        padding: 15px 20px 20px;
+      }
+      .content-details {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .content-detail-label {
+        font-size: 0.8rem;
+      }
+      .content-detail-value {
+        font-size: 0.85rem;
+      }
+      .episode-item {
+        padding: 12px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .episode-number {
+        min-width: auto;
+        font-size: 1rem;
+      }
+      .episode-title {
+        font-size: 0.95rem;
+      }
+      .episode-meta {
+        font-size: 0.75rem;
+      }
+      .episode-description {
+        font-size: 0.85rem;
+      }
+      .episode-play-btn {
+        width: 100%;
+        padding: 8px 16px;
+        font-size: 0.9rem;
+      }
+      .movie-actions {
+        flex-direction: column;
+      }
+      .movie-play-btn {
+        width: 100%;
+        padding: 10px 20px;
+      }
+
+      /* Player */
+      .player-wrapper {
+        width: 100vw;
+        height: 56.25vw; /* 16:9 aspect ratio */
+        max-height: 100vh;
+        border-radius: 0;
+      }
+      .player-meta {
+        padding: 15px 50px 15px 15px;
+      }
+      .player-meta h3 {
+        font-size: 1rem;
+      }
+      .player-meta p {
+        font-size: 0.8rem;
+      }
+      .player-controls {
+        padding: 8px 10px;
+      }
+      .player-controls button {
+        font-size: 1.2rem;
+        padding: 3px;
+      }
+      .player-controls .btn-seek {
+        width: 30px;
+        height: 30px;
+        font-size: 1.5rem;
+      }
+      .player-controls .btn-seek span {
+        font-size: 0.7rem;
+      }
+      .timeline {
+        height: 4px;
+        margin: 0 8px;
+      }
+      .timeline:hover {
+        height: 6px;
+      }
+
+      /* Episode Drawer */
+      .episode-drawer {
+        width: 280px;
+        max-width: 85vw;
+      }
+      .drawer-content {
+        padding: 15px;
+      }
+      .drawer-content h3 {
+        font-size: 1.1rem;
+      }
+      .drawer-content li a {
+        font-size: 0.85rem;
+        padding: 8px 5px;
+      }
+    }
+
+    /* Small Mobile (up to 480px) */
+    @media (max-width: 480px) {
+      .header {
+        padding: .4rem 2%;
+      }
+      .logo {
+        height: 20px;
+      }
+      .icons a {
+        margin-left: 8px;
+        font-size: 12px;
+      }
+      .profile {
+        width: 24px;
+        height: 24px;
+      }
+      #searchInput {
+        min-width: 120px;
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+
+      .hero {
+        height: 30vh;
+        min-height: 180px;
+        max-height: 250px;
+        padding: 1.5% 2%;
+      }
+      .hero-title {
+        font-size: clamp(16px, 6vw, 24px);
+      }
+      .hero-meta {
+        font-size: clamp(10px, 3vw, 12px);
+      }
+      .hero-desc {
+        font-size: clamp(10px, 3vw, 12px);
+        -webkit-line-clamp: 1;
+      }
+      .btn-hero {
+        padding: 5px 10px;
+        font-size: 0.75rem;
+      }
+
+      .controls-bar {
+        padding: 8px 2%;
+        gap: 6px;
+      }
+      .controls-bar > div {
+        flex: 1 1 100%;
+      }
+      .form-select.form-select-sm {
+        width: 100% !important;
+      }
+
+      .feed-sections {
+        padding: 0 2% 30px;
+        gap: 15px;
+      }
+      .row-title {
+        font-size: 1rem;
+        margin: 8px 2% 4px;
+      }
+
+      .carousel-section {
+        padding: 0 15px;
+      }
+      .carousel-strip {
+        grid-auto-columns: calc((100% - (6px * 1)) / 2); /* 2 cards per view on very small screens */
+        gap: 6px;
+      }
+      .arrow-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 0.9rem;
+      }
+
+      .media-thumb {
+        height: 80px;
+      }
+      .media-body {
+        padding: 6px;
+      }
+      .media-title {
+        font-size: 0.8rem;
+      }
+      .media-meta {
+        font-size: 0.65rem;
+      }
+
+      .episodes-modal-content {
+        width: 98%;
+        max-height: 95vh;
+      }
+      .episodes-modal-header {
+        padding: 15px 15px 10px;
+      }
+      .episodes-modal-title {
+        font-size: 1.2rem;
+      }
+      .episodes-modal-body {
+        padding: 10px 15px 15px;
+      }
+
+      .player-wrapper {
+        width: 100vw;
+        height: 56.25vw;
+      }
+      .player-meta {
+        padding: 10px 40px 10px 10px;
+      }
+      .player-meta h3 {
+        font-size: 0.9rem;
+      }
+      .player-meta p {
+        font-size: 0.75rem;
+      }
+      .player-controls {
+        padding: 6px 8px;
+      }
+      .player-controls button {
+        font-size: 1rem;
+      }
+
+      .episode-drawer {
+        width: 250px;
+        max-width: 80vw;
+      }
+    }
+
+    /* Large screens (above 1400px) */
+    @media (min-width: 1400px) {
+      .carousel-strip {
+        grid-auto-columns: calc((100% - (12px * 8)) / 9); /* 9 cards per view on large screens */
+      }
+    }
   </style>
 </head>
 <body>
   <header class="header">
     <div class="container-fluid">
       <div class="d-flex align-items-center justify-content-between">
-        <a class="brand me-4" href="#">
-          <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo"/>
-        </a>
+        <div class="d-flex align-items-center">
+          <button class="mobile-menu-toggle d-lg-none me-3" id="mobileMenuToggle" aria-label="Toggle menu">
+            <i class="bi bi-list" style="font-size: 1.5rem; color: #fff;"></i>
+          </button>
+          <a class="brand me-4" href="#">
+            <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo"/>
+          </a>
+        </div>
 
-        <div class="nav-menu d-lg-flex me-auto">
+        <div class="nav-menu d-lg-flex me-auto" id="navMenu">
           <ul class="nav-list navbar-nav me-auto d-flex flex-row">
-            <li class="nav-item"><a href="#" class="active">Home</a></li>
-            <li class="nav-item"><a href="#">TV Shows</a></li>
-            <li class="nav-item"><a href="#">Movies</a></li>
-            <li class="nav-item"><a href="#">Games</a></li>
-            <li class="nav-item"><a href="#">New & Popular</a></li>
-            <li class="nav-item"><a href="#">My List</a></li>
-            <li class="nav-item"><a href="#">Browse by Languages</a></li>
+            <li class="nav-item"><a href="#" class="active" data-nav="home">Home</a></li>
+            <li class="nav-item"><a href="#" data-nav="series">TV Shows</a></li>
+            <li class="nav-item"><a href="#" data-nav="movie">Movies</a></li>
+            <li class="nav-item"><a href="#" data-nav="popular">New & Popular</a></li>
+            <li class="nav-item"><a href="#" data-nav="mylist">My List</a></li>
             <li class="nav-item admin-only"> <a href="/admin/add-content">
                 <i class="bi bi-upload"></i> Add Content
               </a>

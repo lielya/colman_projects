@@ -65,7 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
     searchQuery: "",
     searchResults: [],
     isLoading: false,
-    genrePagination: {}, 
+    genrePagination: {},
+    activeNav: "home", // Track active navigation item
   };
 
   // --- Playback label helpers ---
@@ -357,6 +358,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (state.searchQuery.length >= 2) {
       renderSearchResults();
+      return;
+    }
+
+    // If we're in a specific navigation mode, don't render default sections
+    if (state.activeNav !== "home") {
+      // Let the navigation handler render the appropriate content
       return;
     }
 
@@ -698,14 +705,28 @@ document.addEventListener("DOMContentLoaded", () => {
     if (elements.filter) {
       elements.filter.addEventListener("change", (e) => {
         state.filter = e.target.value || "all";
-        renderSections();
+        // Re-render based on current navigation
+        if (state.activeNav === "home") {
+          renderSections();
+        } else if (state.activeNav === "series") {
+          renderFilteredContent("series");
+        } else if (state.activeNav === "movie") {
+          renderFilteredContent("movie");
+        } else {
+          handleNavigation(state.activeNav);
+        }
       });
     }
 
     if (elements.sort) {
       elements.sort.addEventListener("change", (e) => {
         state.sort = e.target.value || "az";
-        renderSections();
+        // Re-render based on current navigation
+        if (state.activeNav === "home") {
+          renderSections();
+        } else {
+          handleNavigation(state.activeNav);
+        }
       });
     }
 
@@ -763,6 +784,329 @@ document.addEventListener("DOMContentLoaded", () => {
         closeEpisodesModal();
       }
     });
+
+    // Navigation menu handlers
+    const navLinks = document.querySelectorAll('.nav-item a[data-nav]');
+    navLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const navType = link.dataset.nav;
+        
+        // Update active state
+        navLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+        
+        // Handle navigation
+        handleNavigation(navType);
+        
+        // Close mobile menu if open
+        const navMenu = document.getElementById('navMenu');
+        if (navMenu && navMenu.classList.contains('mobile-visible')) {
+          navMenu.classList.remove('mobile-visible');
+          const toggleBtn = document.getElementById('mobileMenuToggle');
+          if (toggleBtn) {
+            const icon = toggleBtn.querySelector('i');
+            if (icon) icon.className = 'bi bi-list';
+          }
+        }
+      });
+    });
+
+    // Mobile menu toggle
+    const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+    const navMenu = document.getElementById('navMenu');
+    if (mobileMenuToggle && navMenu) {
+      mobileMenuToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navMenu.classList.toggle('mobile-visible');
+        const icon = mobileMenuToggle.querySelector('i');
+        if (icon) {
+          if (navMenu.classList.contains('mobile-visible')) {
+            icon.className = 'bi bi-x-lg';
+            // Add close button inside menu
+            if (!navMenu.querySelector('.mobile-menu-close')) {
+              const closeBtn = document.createElement('button');
+              closeBtn.className = 'mobile-menu-close';
+              closeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+              closeBtn.addEventListener('click', () => {
+                navMenu.classList.remove('mobile-visible');
+                icon.className = 'bi bi-list';
+                closeBtn.remove();
+              });
+              navMenu.appendChild(closeBtn);
+            }
+          } else {
+            icon.className = 'bi bi-list';
+            const closeBtn = navMenu.querySelector('.mobile-menu-close');
+            if (closeBtn) closeBtn.remove();
+          }
+        }
+      });
+
+      // Close menu when clicking outside
+      document.addEventListener('click', (e) => {
+        if (navMenu.classList.contains('mobile-visible') && 
+            !navMenu.contains(e.target) && 
+            !mobileMenuToggle.contains(e.target)) {
+          navMenu.classList.remove('mobile-visible');
+          const icon = mobileMenuToggle.querySelector('i');
+          if (icon) icon.className = 'bi bi-list';
+          const closeBtn = navMenu.querySelector('.mobile-menu-close');
+          if (closeBtn) closeBtn.remove();
+        }
+      });
+    }
+  }
+
+  function handleNavigation(navType) {
+    state.activeNav = navType;
+    state.searchQuery = ""; // Clear search when navigating
+    state.searchResults = [];
+    if (elements.searchInput) {
+      elements.searchInput.value = "";
+      elements.searchInput.classList.remove("show");
+    }
+
+    switch(navType) {
+      case "home":
+        // Reset filters and show all content
+        state.filter = "all";
+        state.watchedFilter = "all";
+        if (elements.filter) elements.filter.value = "all";
+        if (elements.watchedFilter) elements.watchedFilter.value = "all";
+        renderSections();
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        break;
+      
+      case "series":
+        // Filter to show only series
+        state.filter = "all"; // Keep category filter as "all"
+        state.typeFilter = "series"; // Add type filter
+        if (elements.filter) elements.filter.value = "all";
+        renderFilteredContent("series");
+        break;
+      
+      case "movie":
+        // Filter to show only movies
+        state.filter = "all";
+        state.typeFilter = "movie";
+        if (elements.filter) elements.filter.value = "all";
+        renderFilteredContent("movie");
+        break;
+      
+      case "popular":
+        // Show popular content
+        state.filter = "all";
+        state.typeFilter = null;
+        if (elements.filter) elements.filter.value = "all";
+        renderPopularContent();
+        break;
+      
+      case "mylist":
+        // Show liked content
+        state.filter = "all";
+        state.typeFilter = null;
+        if (elements.filter) elements.filter.value = "all";
+        renderMyList();
+        break;
+    }
+  }
+
+  function renderFilteredContent(type) {
+    if (!elements.sections) return;
+    elements.sections.innerHTML = "";
+
+    const allContent = [];
+    
+    // Collect all content from different sections
+    (state.sections.continueWatching || []).forEach(item => {
+      if (item?.content) allContent.push(item.content);
+    });
+    (state.sections.recommendations || []).forEach(item => {
+      if (item?.content) allContent.push(item.content);
+      else if (item?.id) allContent.push(item);
+    });
+    (state.sections.popular || []).forEach(item => {
+      if (item?.id) allContent.push(item);
+    });
+    Object.values(state.sections.newestByGenre || {}).forEach(items => {
+      items.forEach(item => {
+        if (item?.id) allContent.push(item);
+      });
+    });
+
+    // Filter by type and category
+    const filtered = allContent.filter(item => {
+      if (!item) return false;
+      const itemType = item.type || (item.content && item.content.type);
+      if (itemType !== type) return false;
+      
+      // Also apply category filter if set
+      if (state.filter !== "all") {
+        const itemCategory = item.category || (item.content && item.content.category);
+        if (itemCategory !== state.filter) return false;
+      }
+      
+      return true;
+    });
+
+    // Remove duplicates
+    const unique = [];
+    const seen = new Set();
+    filtered.forEach(item => {
+      const id = item.id || (item.content && item.content.id);
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        unique.push(item);
+      }
+    });
+
+    if (unique.length === 0) {
+      renderEmptyState(`No ${type === "series" ? "TV Shows" : "Movies"} found.`);
+      return;
+    }
+
+    // Sort by current sort setting
+    unique.sort((a, b) => {
+      const contentA = a.content || a;
+      const contentB = b.content || b;
+      
+      switch (state.sort) {
+        case "za":
+          return (contentB.title || "").toLowerCase().localeCompare((contentA.title || "").toLowerCase());
+        case "rating":
+          const ratingA = parseFloat(contentA.rating) || 0;
+          const ratingB = parseFloat(contentB.rating) || 0;
+          return ratingB - ratingA;
+        case "popularity":
+          const likesA = contentA.likes || 0;
+          const likesB = contentB.likes || 0;
+          return likesB - likesA;
+        case "az":
+        default:
+          return (contentA.title || "").toLowerCase().localeCompare((contentB.title || "").toLowerCase());
+      }
+    });
+
+    const title = type === "series" ? "TV Shows" : "Movies";
+    renderSection(
+      `filtered-${type}`,
+      title,
+      unique.map(item => ({
+        content: item.content || item,
+        progress: state.progressMap.get((item.content || item).id),
+      })),
+      { showProgress: true, allowSort: false }
+    );
+  }
+
+  async function renderPopularContent() {
+    if (!elements.sections) return;
+    elements.sections.innerHTML = "";
+
+    try {
+      const response = await fetch(`/api/profiles/${state.profileId}/feed`);
+      if (!response.ok) throw new Error(`Feed fetch failed: ${response.status}`);
+      const payload = await response.json();
+      
+      const popular = payload.sections?.popular || [];
+      
+      if (popular.length === 0) {
+        renderEmptyState("No popular content found.");
+        return;
+      }
+
+      // Sort by current sort setting
+      const sorted = [...popular].sort((a, b) => {
+        switch (state.sort) {
+          case "za":
+            return (b.title || "").toLowerCase().localeCompare((a.title || "").toLowerCase());
+          case "rating":
+            const ratingA = parseFloat(a.rating) || 0;
+            const ratingB = parseFloat(b.rating) || 0;
+            return ratingB - ratingA;
+          case "popularity":
+            const likesA = a.likes || 0;
+            const likesB = b.likes || 0;
+            return likesB - likesA;
+          case "az":
+          default:
+            return (a.title || "").toLowerCase().localeCompare((b.title || "").toLowerCase());
+        }
+      });
+
+      renderSection(
+        "popular-nav",
+        "New & Popular",
+        sorted.map(item => ({
+          content: item,
+          progress: state.progressMap.get(item.id),
+        })),
+        { showProgress: true, allowSort: false }
+      );
+    } catch (err) {
+      console.error("Failed to load popular content:", err);
+      renderEmptyState("Error loading popular content.");
+    }
+  }
+
+  async function renderMyList() {
+    if (!elements.sections) return;
+    elements.sections.innerHTML = "";
+
+    const likedIds = Array.from(state.liked);
+    
+    if (likedIds.length === 0) {
+      renderEmptyState("Your list is empty. Like some titles to add them here!");
+      return;
+    }
+
+    const likedContent = [];
+    for (const contentId of likedIds) {
+      const content = state.contentById.get(contentId);
+      if (content) {
+        likedContent.push({
+          content: content,
+          progress: state.progressMap.get(contentId),
+        });
+      }
+    }
+
+    if (likedContent.length === 0) {
+      renderEmptyState("Your list is empty.");
+      return;
+    }
+
+    // Sort by current sort setting
+    likedContent.sort((a, b) => {
+      const contentA = a.content;
+      const contentB = b.content;
+      
+      switch (state.sort) {
+        case "za":
+          return (contentB.title || "").toLowerCase().localeCompare((contentA.title || "").toLowerCase());
+        case "rating":
+          const ratingA = parseFloat(contentA.rating) || 0;
+          const ratingB = parseFloat(contentB.rating) || 0;
+          return ratingB - ratingA;
+        case "popularity":
+          const likesA = contentA.likes || 0;
+          const likesB = contentB.likes || 0;
+          return likesB - likesA;
+        case "az":
+        default:
+          return (contentA.title || "").toLowerCase().localeCompare((contentB.title || "").toLowerCase());
+      }
+    });
+
+    renderSection(
+      "mylist",
+      "My List",
+      likedContent,
+      { showProgress: true, allowSort: false }
+    );
   }
 
   async function performSearch(query) {
@@ -1526,6 +1870,12 @@ document.addEventListener("DOMContentLoaded", () => {
     playerWrapper.dataset.type = content.type; 
     playerWrapper.dataset.contentId = content.id; 
 
+    // Check if this content is new (not in continue watching)
+    const wasInContinueWatching = state.sections.continueWatching.some(
+      item => item?.content?.id === content.id
+    );
+    const hasExistingProgress = state.progressMap.has(content.id);
+
     if (content.type === 'series') {
         if (!episodeId) {
             const progress = state.progressMap.get(content.id);
@@ -1589,6 +1939,49 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
         await videoPlayer.play();
+        
+        // If this is new content (not in continue watching), send a "start" event
+        // and refresh continue watching after a short delay to allow the progress to be saved
+        if (!wasInContinueWatching && !hasExistingProgress) {
+          const sendStartEvent = async () => {
+            const durationSec = videoPlayer.duration || 0;
+            if (durationSec > 0) {
+              // Send initial progress update with "start" event
+              try {
+                const payload = {
+                  contentId: content.id,
+                  episodeId: episodeId || null,
+                  lastPositionSec: startTime || 0,
+                  durationSec: durationSec,
+                  status: "in_progress",
+                  event: "start"
+                };
+                
+                await fetch(`/api/profiles/${state.profileId}/progress`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                });
+                
+                // Refresh continue watching after a short delay
+                setTimeout(() => {
+                  refreshContinueWatching();
+                }, 500);
+              } catch (err) {
+                console.error("Failed to send start event:", err);
+              }
+            }
+          };
+          
+          // Check if metadata is already loaded
+          if (videoPlayer.readyState >= 1) {
+            // Metadata already loaded
+            sendStartEvent();
+          } else {
+            // Wait for metadata to load
+            videoPlayer.addEventListener('loadedmetadata', sendStartEvent, { once: true });
+          }
+        }
     } catch (playError) {
         console.error("Play failed, requires user interaction in some browsers:", playError);
     }
@@ -1827,6 +2220,34 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  async function refreshContinueWatching() {
+    try {
+      const response = await fetch(`/api/profiles/${state.profileId}/continue`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch continue watching: ${response.status}`);
+      }
+      const data = await response.json();
+      const continueWatching = data.items || [];
+      
+      // Update state
+      state.sections.continueWatching = continueWatching;
+      
+      // Update progress map and content index
+      continueWatching.forEach((entry) => {
+        if (entry?.content?.id) {
+          const contentId = entry.content.id;
+          state.contentById.set(contentId, entry.content);
+          state.progressMap.set(contentId, entry);
+        }
+      });
+      
+      // Re-render sections to show updated continue watching
+      renderSections();
+    } catch (err) {
+      console.error("Failed to refresh continue watching:", err);
+    }
+  }
+
   async function sendProgressUpdate(contentId, episodeId, lastPositionSec, durationSec) {
     const payload = {
       contentId,
@@ -1837,12 +2258,21 @@ document.addEventListener("DOMContentLoaded", () => {
       event: "timeupdate" 
     };
 
+    // Check if this content was already in continue watching
+    const wasInContinueWatching = state.sections.continueWatching.some(
+      item => item?.content?.id === contentId
+    );
+
     try {
-      fetch(`/api/profiles/${state.profileId}/progress`, {
+      const response = await fetch(`/api/profiles/${state.profileId}/progress`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      
+      if (!response.ok) {
+        throw new Error(`Progress update failed: ${response.status}`);
+      }
       
       const progress = state.progressMap.get(contentId) || { content: state.contentById.get(contentId) };
       progress.lastPositionSec = lastPositionSec;
@@ -1861,6 +2291,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       state.progressMap.set(contentId, progress);
       refreshPlayButtonsFor(contentId);
+      
+      // If this content wasn't in continue watching before, refresh the section
+      if (!wasInContinueWatching && lastPositionSec > 0) {
+        await refreshContinueWatching();
+      }
       
     } catch (err) {
       console.error("Failed to send progress update:", err);
