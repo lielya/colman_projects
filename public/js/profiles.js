@@ -1,4 +1,3 @@
-// Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Check if user is logged in
