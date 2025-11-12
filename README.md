@@ -28,7 +28,7 @@ npm install
 ## Run the Server
 #### Production Mode:
 ```
-npm start
+node server.js
 ```
 
 
