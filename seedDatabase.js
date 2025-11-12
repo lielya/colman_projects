@@ -563,7 +563,7 @@ try {
   {
     id:"s16", type:"series", title:"The Boys", year:2019, category:"Action",
     poster:"images/series/the-boys.jpg",                                  
-    backdrop:"images/series/the-boys.jpg",                         
+    backdrop:"images/series/the-boys-bd-image.jpg",                         
     info:"Vigilantes vs corrupt superheroes."
   },
   {
@@ -580,8 +580,8 @@ try {
   },
   {
     id:"s19", type:"series", title:"Fargo", year:2014, category:"Crime",
-    poster:"images/series/fargo.jpg",                                     
-    backdrop:"images/series/fargo.jpg",                             
+    poster: "images/series/fargo-poster-image.jpg",
+    backdrop: "images/series/fargo-backdrop.jpg",                            
     info:"Crime stories in the Midwest."
   },
   {
