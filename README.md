@@ -23,15 +23,7 @@ cd colman_projects
 npm install
 ```
 
-#### 3. Create a .env File
 
-Create a file named .env in the project root directory and add:
-```
-MONGO_URI=mongodb://localhost:27017/netflixDB
-PORT=3000
-CONTENT_ITEMS_PER_PAGE=10
-SESSION_SECRET=your_secret_key_goes_here
-```
 
 ## Run the Server
 #### Production Mode:
@@ -39,10 +31,6 @@ SESSION_SECRET=your_secret_key_goes_here
 npm start
 ```
 
-#### Development Mode (auto-restart):
-```
-npm run dev
-```
 
 ## Open the Application
 
@@ -137,7 +125,7 @@ Users can like any movie or series.
 
 #### User Interface
 
-Netflix-style dark theme and professional layout.
+Netflix-style - a professional layout.
 Horizontal scrolling for content categories.
 Infinite scrolling for smooth content loading.
 Responsive design for mobile, tablet, and desktop.
