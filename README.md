@@ -25,6 +25,12 @@ npm install
 
 
 
+Create a local file named .env in the project root directory and add:
+```
+OMDB_API_KEY=*******  // ask for apikey from the manager
+```
+
+
 ## Run the Server
 #### Production Mode:
 ```
