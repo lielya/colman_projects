@@ -95,7 +95,6 @@ colman_projects/
 ├── public/                   # Static files
 │   ├── images/
 │   ├── js/
-│   ├── uploads/
 │   └── videos/
 │
 ├── views/                    # HTML templates
