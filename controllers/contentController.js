@@ -1,7 +1,46 @@
-const Content = require('../models/Content');
-const Episode = require('../models/Episode');
-const Progress = require('../models/Progress');
-const WatchEvent = require('../models/WatchEvent');
+const Content = require("../models/Content");
+const Episode = require("../models/Episode");
+const Progress = require("../models/Progress");
+const WatchEvent = require("../models/WatchEvent");
+
+const normalizeAssetPath = (value) => {
+  if (!value || typeof value !== "string") return "";
+
+  let normalized = value.trim();
+  if (!normalized) return "";
+
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+
+  normalized = normalized.replace(/\\/g, "/");
+  normalized = normalized.replace(/^(\.\.\/)+/, "");
+  normalized = normalized.replace(/^\.\//, "");
+  normalized = normalized.replace(/^public\//i, "");
+  normalized = normalized.replace(/^\/?public\//i, "");
+
+  if (!normalized.startsWith("/")) {
+    normalized = `/${normalized}`;
+  }
+
+  return normalized.replace(/\/{2,}/g, "/");
+};
+
+const mapEpisode = (episode) => {
+  if (!episode) return null;
+  return {
+    id: episode._id?.toString?.() || episode.id,
+    seriesId: episode.seriesId,
+    season: episode.season,
+    episode: episode.episode,
+    title: episode.title,
+    description: episode.description,
+    durationSec: episode.durationSec,
+    videoUrl: normalizeAssetPath(episode.videoUrl),
+    thumbnailUrl: normalizeAssetPath(episode.thumbnailUrl),
+    airDate: episode.airDate,
+    createdAt: episode.createdAt,
+    updatedAt: episode.updatedAt,
+  };
+};
 
 // Get all content with pagination (default: 10 items per page)
 exports.getAllContent = async (req, res) => {
@@ -55,13 +94,14 @@ exports.searchContent = async (req, res) => {
       title: doc.title,
       year: doc.year,
       category: doc.category,
-      poster: doc.poster,
-      backdrop: doc.backdrop,
+      poster: normalizeAssetPath(doc.poster),
+      backdrop: normalizeAssetPath(doc.backdrop),
+      videoUrl: normalizeAssetPath(doc.videoUrl),
       info: doc.info,
       likes: doc.likes || 0,
       rating: doc.rating || 'N/A',
       score:
-        typeof doc.score === "number"
+        typeof doc.score === 'number'
           ? doc.score
           : (doc.likes || 0) + (doc.completions || 0),
       completions: doc.completions || 0,
@@ -88,7 +128,7 @@ exports.getEpisodes = async (req, res) => {
       return res.status(404).json({ message: 'No episodes found for this content' });
     }
 
-    res.json(episodes);
+    res.json(episodes.map(mapEpisode));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -111,8 +151,9 @@ exports.getContentById = async (req, res) => {
       title: content.title,
       year: content.year,
       category: content.category,
-      poster: content.poster,
-      backdrop: content.backdrop,
+      poster: normalizeAssetPath(content.poster),
+      backdrop: normalizeAssetPath(content.backdrop),
+      videoUrl: normalizeAssetPath(content.videoUrl),
       info: content.info,
       likes: content.likes || 0,
       actors: content.actors || [],
@@ -152,17 +193,7 @@ exports.getFirstEpisode = async (req, res) => {
       return res.status(404).json({ message: 'No first episode found for this series' });
     }
 
-    res.json({
-      id: firstEpisode._id.toString(),
-      title: firstEpisode.title,
-      season: firstEpisode.season,
-      episode: firstEpisode.episode,
-      description: firstEpisode.description,
-      durationSec: firstEpisode.durationSec,
-      videoUrl: firstEpisode.videoUrl,
-      thumbnailUrl: firstEpisode.thumbnailUrl,
-      airDate: firstEpisode.airDate
-    });
+    res.json(mapEpisode(firstEpisode));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -231,8 +262,9 @@ exports.getContentByGenre = async (req, res) => {
       title: doc.title,
       year: doc.year,
       category: doc.category,
-      poster: doc.poster,
-      backdrop: doc.backdrop,
+      poster: normalizeAssetPath(doc.poster),
+      backdrop: normalizeAssetPath(doc.backdrop),
+      videoUrl: normalizeAssetPath(doc.videoUrl),
       info: doc.info,
       likes: doc.likes || 0,
       rating: doc.rating || 'N/A',

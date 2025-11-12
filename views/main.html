@@ -1,13 +1,10 @@
-<!--Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Netflix - Main</title>
-  <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <!-- Bootstrap Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"/>
   <style>
     /* Darker page background */
@@ -76,14 +73,19 @@
     /* Feed container */
     .feed-sections{ padding:0 4% 60px; display:flex; flex-direction:column; gap:30px; }
     .feed-sections .row-title{ margin:0 0 8px; }
+    
     /* Carousel rows */
-    .carousel-section{ position:relative; }
+    .carousel-section{ 
+      position:relative; 
+      padding: 0 40px; /* 'safe zone' for arrows */
+    }
     .carousel-viewport{
-      overflow-x:auto; overflow-y:visible; scroll-behavior:smooth; padding:0 4% 10px;
+      overflow-x:auto; overflow-y:visible; 
+      scroll-behavior: smooth; /* <-- THIS IS THE FIX. IT'S BACK. */
+      padding-bottom: 10px; 
       -ms-overflow-style:none; scrollbar-width:none;
-      /* Smooth scrolling like Netflix */
       scroll-snap-type: none;
-      -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+      -webkit-overflow-scrolling: touch; 
     }
     .carousel-viewport::-webkit-scrollbar{ display:none; }
     .carousel-strip{
@@ -92,10 +94,23 @@
     }
 
     /* Cards */
-    .media-card{ position:relative; background:rgba(0,0,0,0.6); border:1px solid #2b2b2b;
-      border-radius:10px; overflow:hidden; transition:transform .2s ease; }
-    .media-card:hover{ transform: translateY(-3px); }
-    .media-thumb{ width:100%; height:125px; object-fit:cover; display:block; }
+    .media-card{ 
+      position:relative; 
+      background:rgba(0,0,0,0.6); 
+      border:1px solid #2b2b2b;
+      border-radius:10px; 
+      transition: all .2s ease;
+    }
+    .media-card:hover{ 
+      transform: scale(1.15); /* 35% bigger hover effect */
+      z-index: 10;
+    }
+    .media-thumb{ 
+      width:100%; height:125px; 
+      object-fit:cover; display:block; 
+      border-radius: 10px 10px 0 0; 
+    }
+
     .media-body{ padding:10px; }
     .media-title{ font-size:.95rem; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .media-meta{ font-size:.8rem; color:#b3b3b3; }
@@ -121,14 +136,24 @@
     .flyout-meta{ font-size:.8rem; color:#b3b3b3; margin-bottom:6px; }
     .flyout-text{ font-size:.85rem; color:#ddd; }
 
-    /* Carousel arrows */
+    /* Circle Arrows */
     .arrow-btn{
-      position:absolute; top:50%; transform:translateY(-50%); width:36px; height:36px; border-radius:50%;
-      border:1px solid #555; background:rgba(0,0,0,0.6); color:#fff; display:grid; place-items:center;
+      position:absolute; 
+      width: 40px; 
+      height: 40px; 
+      top: 50%; 
+      bottom: auto; 
+      transform: translateY(-50%); 
+      border-radius: 50%; 
+      border: 1px solid #555; 
+      background:rgba(0,0,0,0.6); color:#fff; display:grid; place-items:center;
       cursor:pointer; transition:background-color .15s ease; z-index:10;
+      font-size: 1.2rem; 
     }
     .arrow-btn:hover{ background:rgba(255,255,255,0.12); }
-    .arrow-btn.prev{ left:10px; } .arrow-btn.next{ right:10px; }
+    .arrow-btn.prev{ left: 0; }
+    .arrow-btn.next{ right: 0; }
+
     .arrow-btn:disabled{ opacity:.35; cursor:not-allowed; }
     .section-empty{ text-align:center; padding:40px 0; color:#808080; font-size:1rem; }
     .empty-text{ margin:0; color:#808080; }
@@ -225,46 +250,774 @@
     .movie-play-btn:hover{ background:#f40612; }
     .episodes-section{ margin-top:25px; padding-top:20px; border-top:1px solid #333; }
 
-  /* Style for the new rating on the card */
-  .media-rating {
-  display: flex;
-  align-items: center;
-  gap: 5px; 
-  color: #fff; 
-  font-size: 0.85rem; 
-  font-weight: 600;
-  }
+    /* Style for the new rating on the card */
+    .media-rating {
+      display: flex;
+      align-items: center;
+      gap: 5px; 
+      color: #fff; 
+      font-size: 0.85rem; 
+      font-weight: 600;
+    }
+    .media-rating .bi-star-fill {
+      color: #fff; 
+      font-size: 0.8rem; 
+    }
 
-  .media-rating .bi-star-fill {
-  color: #fff; 
-  font-size: 0.8rem; 
-  }
+    /* כפתור אדמין מוסתר כברירת מחדל */
+    .admin-only {
+      display: none; 
+    }
 
-  .admin-only {
-    display: none; 
-  }
+    /* Player modal (הקוד הישן) */
+    .player-modal{
+      position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+      background:rgba(0,0,0,0.92); backdrop-filter:blur(3px); z-index:3000;
+    }
+    .player-modal.show{ display:flex; }
+    .player-overlay{ position:absolute; inset:0; }
+    .player-wrapper{
+      position:relative; width:min(90vw, 1100px); aspect-ratio:16 / 9;
+      background:#000; border-radius:12px; overflow:hidden;
+      box-shadow:0 30px 80px rgba(0,0,0,0.85);
+    }
+    .player-video{
+      width:100%; height:100%; background:#000; object-fit:cover;
+    }
+    .player-close{
+      position:absolute; top:12px; right:12px; width:40px; height:40px;
+      border:none; border-radius:50%; background:rgba(0,0,0,0.6); color:#fff;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; z-index:10;
+      transition:background 0.2s ease;
+    }
+    .player-close:hover{ background:rgba(0,0,0,0.8); }
+    
+    /* --- 👇 ה-CSS החדש לנגן (מחליף את הישן) 👇 --- */
+    
+    .player-meta {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0; /* (3) שינוי מיקום - למעלה */
+        padding: 20px 60px 20px 20px; 
+        background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 100%);
+        color: #fff;
+        opacity: 0; 
+        transition: opacity 0.3s ease;
+        z-index: 3;
+    }
+    .player-meta h3{ margin:0 0 6px; font-size:1.2rem; }
+    .player-meta p{ margin:0; font-size:0.9rem; color:#d0d0d0; }
+
+    video::-webkit-media-controls { display: none !important; }
+    video::-moz-media-controls { display: none !important; }
+    video::media-controls { display: none !important; }
+
+    .player-controls {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+        padding: 10px 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        opacity: 0; 
+        transition: opacity 0.3s ease;
+        z-index: 3; 
+    }
+
+    .player-wrapper:hover .player-controls,
+    .player-wrapper:hover .player-meta {
+        opacity: 1;
+    }
+
+    .player-controls button {
+        background: none;
+        border: none;
+        color: #fff;
+        font-size: 1.4rem;
+        padding: 5px;
+        cursor: pointer;
+    }
+    .player-controls button:hover {
+        color: #E50914; 
+    }
+
+    /* (2) עיצוב כפתורי 10 שניות (כמו בנטפליקס) */
+.player-controls .btn-seek {
+    font-size: 1.8rem; /* גודל החץ המעגלי */
+    font-weight: 300;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    position: relative; /* קריטי למיקום המספר */
+    width: 36px; /* גודל אחיד */
+    height: 36px;
+    padding: 0; /* איפוס ריפוד */
+}
+.player-controls .btn-seek i {
+    /* האייקון עצמו, יושב כשכבת בסיס */
+    font-size: 1.8rem; 
+    position: absolute; /* ממקם אותו במרכז הכפתור */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.player-controls .btn-seek span {
+    font-size: 0.8rem; /* גודל המספר "10" */
+    font-weight: 700;
+    position: absolute; /* ממקם את המספר *מעל* האייקון */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* ממכרז את המספר בדיוק */
+    color: #fff; 
+    /* הקוד הזה דורס את ה-'left: -3px' הישן */
+}
+.player-controls .btn-seek:hover i,
+    .player-controls .btn-seek:hover span,
+    .player-controls .btn-seek:active i,
+    .player-controls .btn-seek:active span {
+        color: #E50914; /* אדום נטפליקס */
+    }
+
+    .player-controls button.series-only {
+        display: none;
+    }
+    .player-wrapper[data-type="series"] .player-controls button.series-only {
+        display: inline-block;
+    }
+    
+    .controls-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .controls-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: auto; /* דוחף ימינה */
+    }
+
+
+    .timeline {
+        flex-grow: 1; 
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 5px;
+        background: #555;
+        outline: none;
+        cursor: pointer;
+        transition: height 0.1s ease;
+        margin: 0 10px; 
+    }
+    .timeline:hover {
+        height: 8px; 
+    }
+    .timeline::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 15px;
+        height: 15px;
+        background: #E50914;
+        border-radius: 50%;
+        cursor: pointer;
+    }
+    .timeline::-moz-range-thumb {
+        width: 15px;
+        height: 15px;
+        background: #E50914;
+        border-radius: 50%;
+        cursor: pointer;
+    }
+
+    /* --- עיצוב מגירת פרקים --- */
+    .episode-drawer {
+        position: fixed;
+        top: 0;
+        right: -350px; 
+        width: 350px;
+        max-width: 90vw;
+        height: 100vh;
+        background-color: #111;
+        box-shadow: -5px 0 15px rgba(0,0,0,0.5);
+        transition: right 0.3s ease-in-out;
+        z-index: 4000; 
+        overflow-y: auto;
+        border-left: 1px solid #333;
+    }
+    .episode-drawer.visible {
+        right: 0; 
+    }
+    .drawer-content { padding: 20px; }
+    .drawer-content h3 { 
+        color: #fff;
+        border-bottom: 1px solid #333; 
+        padding-bottom: 10px; 
+    }
+    .drawer-content ul { list-style: none; padding: 0; }
+    .drawer-content li a {
+        color: #ccc;
+        text-decoration: none;
+        display: block;
+        padding: 10px 5px;
+        border-bottom: 1px solid #222;
+    }
+    .drawer-content li a:hover,
+    .drawer-content li.active a {
+        color: #fff;
+        background-color: #333;
+    }
+
+    /* מיקום כפתור העריכה בפינה הימנית למעלה של המודאל */
+    .admin-edit-button {
+        position: absolute;
+        top: 20px;
+        right: 70px; /* 70px כדי לתת מקום לכפתור הסגירה (X) */
+        z-index: 11; /* מעל הכותרת, אבל מתחת לכפתור הסגירה */
+    }
+    .admin-edit-button .btn {
+        font-size: 0.8rem; /* כפתור קטן יותר */
+        padding: 0.25rem 0.5rem;
+    }
+    .admin-edit-button .btn i {
+        font-size: 0.9rem; /* אייקון קטן יותר */
+        margin-right: 4px;
+    }
+
+    /* ========== RESPONSIVE DESIGN ========== */
+    
+    /* Tablet (768px - 1024px) */
+    @media (max-width: 1024px) {
+      .header {
+        padding: .5rem 2%;
+      }
+      .nav-item a {
+        margin-right: 12px;
+        font-size: 13px;
+      }
+      .carousel-section {
+        padding: 0 35px;
+      }
+      .carousel-strip {
+        grid-auto-columns: calc((100% - (12px * 5)) / 6); /* 6 cards per view */
+      }
+      .hero {
+        height: 40vh;
+        min-height: 250px;
+        padding: 2% 3%;
+      }
+      .feed-sections {
+        padding: 0 2% 40px;
+      }
+      .row-title {
+        font-size: 1.2rem;
+        margin: 12px 2% 6px;
+      }
+    }
+
+    /* Mobile (up to 768px) */
+    @media (max-width: 768px) {
+      body {
+        background-attachment: scroll; /* Better performance on mobile */
+      }
+      
+      /* Header adjustments */
+      .header {
+        padding: .5rem 3%;
+      }
+      .logo {
+        height: 24px;
+      }
+      .nav-menu {
+        display: none !important; /* Hide nav menu on mobile - can be toggled if needed */
+      }
+      .nav-menu.mobile-visible {
+        display: flex !important;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.98);
+        flex-direction: column;
+        padding: 3rem 1rem 1rem;
+        z-index: 999;
+        overflow-y: auto;
+      }
+      .mobile-menu-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1001;
+      }
+      .mobile-menu-toggle:hover {
+        opacity: 0.7;
+      }
+      .mobile-menu-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: none;
+        border: none;
+        color: #fff;
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 5px;
+        z-index: 1000;
+      }
+      .mobile-menu-close:hover {
+        opacity: 0.7;
+      }
+      .nav-list {
+        flex-direction: column !important;
+        width: 100%;
+      }
+      .nav-item {
+        width: 100%;
+        margin: 0;
+        padding: 0.5rem 0;
+      }
+      .nav-item a {
+        margin-right: 0;
+        font-size: 14px;
+        display: block;
+        padding: 0.5rem 0;
+      }
+      #welcome-text {
+        font-size: 12px;
+        margin-right: 4px;
+        display: none; /* Hide on very small screens */
+      }
+      .icons a {
+        margin-left: 10px;
+        font-size: 14px;
+      }
+      .profile {
+        width: 28px;
+        height: 28px;
+      }
+      .search-wrap {
+        position: absolute;
+        right: 50px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      #searchInput {
+        min-width: 150px;
+        font-size: 14px;
+      }
+
+      /* Hero section */
+      .hero {
+        height: 35vh;
+        min-height: 200px;
+        max-height: 300px;
+        padding: 2% 3%;
+      }
+      .hero-content {
+        max-width: 100%;
+      }
+      .hero-title {
+        font-size: clamp(18px, 5vw, 28px);
+        margin-bottom: 6px;
+      }
+      .hero-meta {
+        font-size: clamp(11px, 2.5vw, 14px);
+        margin-bottom: 8px;
+      }
+      .hero-desc {
+        font-size: clamp(11px, 2.5vw, 13px);
+        margin-bottom: 10px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .btn-hero {
+        padding: 6px 12px;
+        font-size: 0.85rem;
+      }
+      .d-flex.gap-2 {
+        flex-wrap: wrap;
+        gap: 8px !important;
+      }
+
+      /* Controls bar */
+      .controls-bar {
+        padding: 10px 3%;
+        gap: 8px;
+      }
+      .controls-bar label {
+        font-size: 12px;
+      }
+      .form-select {
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+      .form-select.form-select-sm {
+        width: 140px !important;
+      }
+
+      /* Feed sections */
+      .feed-sections {
+        padding: 0 3% 40px;
+        gap: 20px;
+      }
+      .row-title {
+        font-size: 1.1rem;
+        margin: 10px 3% 6px;
+      }
+
+      /* Carousel */
+      .carousel-section {
+        padding: 0 20px;
+      }
+      .carousel-strip {
+        grid-auto-columns: calc((100% - (8px * 2)) / 3); /* 3 cards per view on mobile */
+        gap: 8px;
+      }
+      .arrow-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+      }
+      .arrow-btn.prev {
+        left: -5px;
+      }
+      .arrow-btn.next {
+        right: -5px;
+      }
+
+      /* Cards */
+      .media-card {
+        border-radius: 8px;
+      }
+      .media-thumb {
+        height: 100px;
+      }
+      .media-body {
+        padding: 8px;
+      }
+      .media-title {
+        font-size: 0.85rem;
+      }
+      .media-meta {
+        font-size: 0.7rem;
+      }
+      .media-rating {
+        font-size: 0.75rem;
+      }
+      .like-btn {
+        font-size: 1rem;
+      }
+      .like-count {
+        font-size: 0.75rem;
+      }
+      .progress-label {
+        font-size: 0.7rem;
+      }
+      .resume-btn, .watch-from-beginning-btn {
+        font-size: 0.7rem;
+        padding: 3px 6px;
+      }
+
+      /* Flyout */
+      .flyout {
+        width: 240px;
+        padding: 8px;
+      }
+      .flyout-title {
+        font-size: 0.85rem;
+      }
+      .flyout-meta {
+        font-size: 0.7rem;
+      }
+      .flyout-text {
+        font-size: 0.75rem;
+      }
+
+      /* Episodes Modal */
+      .episodes-modal-content {
+        width: 95%;
+        max-height: 90vh;
+      }
+      .episodes-modal-header {
+        padding: 20px 20px 15px;
+      }
+      .episodes-modal-title {
+        font-size: 1.4rem;
+      }
+      .episodes-modal-info {
+        font-size: 0.85rem;
+      }
+      .episodes-modal-body {
+        padding: 15px 20px 20px;
+      }
+      .content-details {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .content-detail-label {
+        font-size: 0.8rem;
+      }
+      .content-detail-value {
+        font-size: 0.85rem;
+      }
+      .episode-item {
+        padding: 12px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .episode-number {
+        min-width: auto;
+        font-size: 1rem;
+      }
+      .episode-title {
+        font-size: 0.95rem;
+      }
+      .episode-meta {
+        font-size: 0.75rem;
+      }
+      .episode-description {
+        font-size: 0.85rem;
+      }
+      .episode-play-btn {
+        width: 100%;
+        padding: 8px 16px;
+        font-size: 0.9rem;
+      }
+      .movie-actions {
+        flex-direction: column;
+      }
+      .movie-play-btn {
+        width: 100%;
+        padding: 10px 20px;
+      }
+
+      /* Player */
+      .player-wrapper {
+        width: 100vw;
+        height: 56.25vw; /* 16:9 aspect ratio */
+        max-height: 100vh;
+        border-radius: 0;
+      }
+      .player-meta {
+        padding: 15px 50px 15px 15px;
+      }
+      .player-meta h3 {
+        font-size: 1rem;
+      }
+      .player-meta p {
+        font-size: 0.8rem;
+      }
+      .player-controls {
+        padding: 8px 10px;
+      }
+      .player-controls button {
+        font-size: 1.2rem;
+        padding: 3px;
+      }
+      .player-controls .btn-seek {
+        width: 30px;
+        height: 30px;
+        font-size: 1.5rem;
+      }
+      .player-controls .btn-seek span {
+        font-size: 0.7rem;
+      }
+      .timeline {
+        height: 4px;
+        margin: 0 8px;
+      }
+      .timeline:hover {
+        height: 6px;
+      }
+
+      /* Episode Drawer */
+      .episode-drawer {
+        width: 280px;
+        max-width: 85vw;
+      }
+      .drawer-content {
+        padding: 15px;
+      }
+      .drawer-content h3 {
+        font-size: 1.1rem;
+      }
+      .drawer-content li a {
+        font-size: 0.85rem;
+        padding: 8px 5px;
+      }
+    }
+
+    /* Small Mobile (up to 480px) */
+    @media (max-width: 480px) {
+      .header {
+        padding: .4rem 2%;
+      }
+      .logo {
+        height: 20px;
+      }
+      .icons a {
+        margin-left: 8px;
+        font-size: 12px;
+      }
+      .profile {
+        width: 24px;
+        height: 24px;
+      }
+      #searchInput {
+        min-width: 120px;
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+
+      .hero {
+        height: 30vh;
+        min-height: 180px;
+        max-height: 250px;
+        padding: 1.5% 2%;
+      }
+      .hero-title {
+        font-size: clamp(16px, 6vw, 24px);
+      }
+      .hero-meta {
+        font-size: clamp(10px, 3vw, 12px);
+      }
+      .hero-desc {
+        font-size: clamp(10px, 3vw, 12px);
+        -webkit-line-clamp: 1;
+      }
+      .btn-hero {
+        padding: 5px 10px;
+        font-size: 0.75rem;
+      }
+
+      .controls-bar {
+        padding: 8px 2%;
+        gap: 6px;
+      }
+      .controls-bar > div {
+        flex: 1 1 100%;
+      }
+      .form-select.form-select-sm {
+        width: 100% !important;
+      }
+
+      .feed-sections {
+        padding: 0 2% 30px;
+        gap: 15px;
+      }
+      .row-title {
+        font-size: 1rem;
+        margin: 8px 2% 4px;
+      }
+
+      .carousel-section {
+        padding: 0 15px;
+      }
+      .carousel-strip {
+        grid-auto-columns: calc((100% - (6px * 1)) / 2); /* 2 cards per view on very small screens */
+        gap: 6px;
+      }
+      .arrow-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 0.9rem;
+      }
+
+      .media-thumb {
+        height: 80px;
+      }
+      .media-body {
+        padding: 6px;
+      }
+      .media-title {
+        font-size: 0.8rem;
+      }
+      .media-meta {
+        font-size: 0.65rem;
+      }
+
+      .episodes-modal-content {
+        width: 98%;
+        max-height: 95vh;
+      }
+      .episodes-modal-header {
+        padding: 15px 15px 10px;
+      }
+      .episodes-modal-title {
+        font-size: 1.2rem;
+      }
+      .episodes-modal-body {
+        padding: 10px 15px 15px;
+      }
+
+      .player-wrapper {
+        width: 100vw;
+        height: 56.25vw;
+      }
+      .player-meta {
+        padding: 10px 40px 10px 10px;
+      }
+      .player-meta h3 {
+        font-size: 0.9rem;
+      }
+      .player-meta p {
+        font-size: 0.75rem;
+      }
+      .player-controls {
+        padding: 6px 8px;
+      }
+      .player-controls button {
+        font-size: 1rem;
+      }
+
+      .episode-drawer {
+        width: 250px;
+        max-width: 80vw;
+      }
+    }
+
+    /* Large screens (above 1400px) */
+    @media (min-width: 1400px) {
+      .carousel-strip {
+        grid-auto-columns: calc((100% - (12px * 8)) / 9); /* 9 cards per view on large screens */
+      }
+    }
   </style>
 </head>
 <body>
-  <!-- Header -->
   <header class="header">
     <div class="container-fluid">
       <div class="d-flex align-items-center justify-content-between">
-        <!-- Left: Logo -->
-        <a class="brand me-4" href="#">
-          <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo"/>
-        </a>
+        <div class="d-flex align-items-center">
+          <button class="mobile-menu-toggle d-lg-none me-3" id="mobileMenuToggle" aria-label="Toggle menu">
+            <i class="bi bi-list" style="font-size: 1.5rem; color: #fff;"></i>
+          </button>
+          <a class="brand me-4" href="#">
+            <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo"/>
+          </a>
+        </div>
 
-        <!-- Center: Nav -->
-        <div class="nav-menu d-lg-flex me-auto">
+        <div class="nav-menu d-lg-flex me-auto" id="navMenu">
           <ul class="nav-list navbar-nav me-auto d-flex flex-row">
-            <li class="nav-item"><a href="#" class="active">Home</a></li>
-            <li class="nav-item"><a href="#">TV Shows</a></li>
-            <li class="nav-item"><a href="#">Movies</a></li>
-            <li class="nav-item"><a href="#">Games</a></li>
-            <li class="nav-item"><a href="#">New & Popular</a></li>
-            <li class="nav-item"><a href="#">My List</a></li>
-            <li class="nav-item"><a href="#">Browse by Languages</a></li>
+            <li class="nav-item"><a href="#" class="active" data-nav="home">Home</a></li>
+            <li class="nav-item"><a href="#" data-nav="series">TV Shows</a></li>
+            <li class="nav-item"><a href="#" data-nav="movie">Movies</a></li>
+            <li class="nav-item"><a href="#" data-nav="popular">New & Popular</a></li>
+            <li class="nav-item"><a href="#" data-nav="mylist">My List</a></li>
             <li class="nav-item admin-only"> <a href="/admin/add-content">
                 <i class="bi bi-upload"></i> Add Content
               </a>
@@ -272,7 +1025,6 @@
           </ul>
         </div>
 
-        <!-- Right: search, bell, profile dropdown, search input -->
         <div class="icons d-flex align-items-center">
           <a href="#" id="searchToggle" aria-label="Search"><i class="bi bi-search"></i></a>
           <a href="#"><i class="bi bi-bell"></i></a>
@@ -296,7 +1048,6 @@
     </div>
   </header>
 
-  <!-- HERO: random pick each login -->
   <section id="hero" class="hero">
     <div class="hero-content">
       <h1 id="heroTitle" class="hero-title"></h1>
@@ -310,13 +1061,12 @@
     </div>
   </section>
 
-  <!-- Controls: sort and filter -->
   <section class="controls-bar">
     <div class="d-flex align-items-center gap-2">
       <label class="me-1">Sort:</label>
       <select id="sortSelect" class="form-select form-select-sm" style="width:180px;">
         <option value="az" selected>Title A to Z</option>
-        <option value="za">Title Z to A</option>
+        <option value"za">Title Z to A</option>
         <option value="rating">Rating</option>
         <option value="popularity">Popularity</option>
       </select>
@@ -337,10 +1087,8 @@
     </div>
   </section>
 
-  <!-- Dynamic Feed Sections -->
   <section id="feedSections" class="feed-sections"></section>
 
-  <!-- Episodes Modal -->
   <div id="episodesModal" class="episodes-modal" style="display: none;">
     <div class="episodes-modal-overlay" id="episodesModalOverlay"></div>
     <div class="episodes-modal-content">
@@ -357,9 +1105,54 @@
     </div>
   </div>
 
-  <!-- Bootstrap JS -->
+  <div id="playerModal" class="player-modal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div id="playerOverlay" class="player-overlay"></div>
+      <div class="player-wrapper">
+          
+          <button id="playerClose" class="player-close" aria-label="Close player">
+              <i class="bi bi-x-lg"></i>
+          </button>
+  
+          <div class="player-meta">
+              <h3 id="playerTitle"></h3>
+              <p id="playerSubtitle"></p>
+          </div>
+  
+          <video id="playerVideo" class="player-video" preload="auto"></video>
+          
+          <div class="player-controls">
+              
+              <div class="controls-left">
+                  <button id="playPauseBtn" title="Play/Pause"><i class="bi bi-play-fill"></i></button>
+              </div>
+              
+              <input type="range" id="timeline" class="timeline" value="0" step="0.1" title="Timeline">
+              
+              <div class="controls-right">
+                  <button id="rewindBtn" title="Rewind 10s" class="btn-seek">
+                      <i class="bi bi-arrow-counterclockwise"></i><span>10</span>
+                  </button>
+                  <button id="forwardBtn" title="Forward 10s" class="btn-seek">
+                      <i class="bi bi-arrow-clockwise"></i><span>10</span>
+                  </button>
+                  
+                  <button id="episodeListBtn" class="series-only" title="Episodes"><i class="bi bi-list-ul"></i></button>
+                  <button id="nextEpisodeBtn" class="series-only" title="Next Episode"><i class="bi bi-skip-end-fill"></i></button>
+                  <button id="fullscreenBtn" title="Fullscreen"><i class="bi bi-arrows-fullscreen"></i></button>
+              </div>
+          </div>
+  
+      </div>
+  </div>
+  
+  <div id="episodeDrawer" class="episode-drawer">
+      <div class="drawer-content">
+          <h3 id="episodeListTitle">Episodes</h3>
+          <ul id="episodeListContainer">
+              </ul>
+      </div>
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <!-- App JS -->
   <script src="./js/main.js"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 // Amit-Mosseri-206446791-Liel-Yaakobov-322366311-Lihi-Skif-322235888
 
 document.addEventListener("DOMContentLoaded", () => {
+  
   const userId = localStorage.getItem("userId");
   const profileId = localStorage.getItem("selectedProfileId");
   const profileName = localStorage.getItem("selectedProfileName");
@@ -64,13 +65,78 @@ document.addEventListener("DOMContentLoaded", () => {
     searchQuery: "",
     searchResults: [],
     isLoading: false,
-    genrePagination: {}, // Track pagination state for each genre: { genre: { page: 1, hasMore: true, loading: false } }
+    genrePagination: {},
+    activeNav: "home", // Track active navigation item
   };
 
-  const CARD_GAP = 12;
-  const MIN_LOOP_ITEMS = 8;
+  // --- Playback label helpers ---
+  const REWATCH_THRESHOLD = 95;
+
+  function computeWatchPercentage(progress) {
+    if (!progress) return 0;
+    if (typeof progress.watchPercentage === "number") return Math.max(0, Math.min(100, progress.watchPercentage));
+    const last = Number(progress.lastPositionSec || 0);
+    const dur = Number(progress.durationSec || 0);
+    if (!dur || dur <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round((last / dur) * 100)));
+  }
+
+  function isRewatch(progress) {
+    return computeWatchPercentage(progress) >= REWATCH_THRESHOLD;
+  }
+
+  function getPlayLabel(progress) {
+    const pct = computeWatchPercentage(progress);
+    if (pct >= REWATCH_THRESHOLD) return "Rewatch";
+    if (pct > 0) return "Resume";
+    return "Play";
+  }
+
+  function refreshPlayButtonsFor(contentId) {
+    try {
+      const progress = state.progressMap.get(contentId) || null;
+      const rewatch = isRewatch(progress);
+
+      if (elements.heroPlay && elements.heroPlay.dataset.contentId === String(contentId)) {
+        if (elements.heroPlay.textContent !== "View Episodes") {
+          elements.heroPlay.textContent = getPlayLabel(progress);
+        }
+      }
+      if (elements.heroWatchFromBeginning && elements.heroWatchFromBeginning.dataset.contentId === String(contentId)) {
+        elements.heroWatchFromBeginning.style.display = progress && !rewatch && computeWatchPercentage(progress) > 0 ? "inline-block" : "none";
+      }
+
+      if (elements.episodesModalBody) {
+        elements.episodesModalBody.querySelectorAll(`[data-content-id="${contentId}"].movie-play-btn, .movie-play-btn[data-content-id="${contentId}"]`).forEach(btn => {
+          btn.textContent = getPlayLabel(progress);
+        });
+        elements.episodesModalBody.querySelectorAll(`.resume-btn[data-content-id="${contentId}"]`).forEach(btn => {
+          btn.textContent = getPlayLabel(progress);
+        });
+        elements.episodesModalBody.querySelectorAll(`.watch-from-beginning-btn[data-content-id="${contentId}"]`).forEach(btn => {
+          btn.style.display = rewatch ? "none" : "";
+        });
+      }
+
+      if (elements.sections) {
+        elements.sections.querySelectorAll(`[data-id="${contentId}"] .resume-btn`).forEach(btn => {
+          btn.textContent = getPlayLabel(progress);
+        });
+        elements.sections.querySelectorAll(`[data-id="${contentId}"] .watch-from-beginning-btn`).forEach(btn => {
+          btn.style.display = rewatch ? "none" : "";
+        });
+      }
+    } catch (e) {
+      console.error("refreshPlayButtonsFor error:", e);
+    }
+  }
 
   let searchTimer = null;
+
+  let allEpisodes = [];
+  let currentEpisodeId = null;
+  let playerEventsBound = false; 
+  let progressUpdateTimer = null; 
 
   init().catch((err) => {
     console.error("Failed to initialise main view:", err);
@@ -87,11 +153,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const heroCandidate = pickHeroCandidate();
     if (heroCandidate) {
       renderHero(heroCandidate);
-} else {
+    } else {
       showErrorState("No titles available yet. Please check back soon.");
     }
     renderSections();
-    bindEvents();
+    bindEvents(); 
   }
 
   async function loadFeed() {
@@ -118,17 +184,10 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.welcome.textContent = `Hello, ${name}`;
       localStorage.setItem("selectedProfileName", name);
 
-      console.log("Checking admin status...");
-      console.log("Profile name is:", name); 
-
       if (name.toLowerCase() === "admin") {
-        console.log("Admin detected! Trying to show elements.");
-        
         const adminElements = document.querySelectorAll('.admin-only');
-        console.log("Found elements:", adminElements); 
-        
         adminElements.forEach(el => {
-          el.style.display = 'list-item';
+          el.style.display = 'list-item'; 
         });
       }
     }
@@ -179,6 +238,7 @@ document.addEventListener("DOMContentLoaded", () => {
       merged.score = merged.score || existing.score || 0;
       merged.completions = merged.completions || existing.completions || 0;
       merged.actors = merged.actors || existing.actors || [];
+      merged.rating = merged.rating || existing.rating || 'N/A'; 
 
       state.contentById.set(content.id, merged);
 
@@ -197,7 +257,7 @@ document.addEventListener("DOMContentLoaded", () => {
     (state.sections.popular || []).forEach(registerContent);
 
     const newestByGenre = state.sections.newestByGenre || {};
-    Object.keys(newestByGenre).forEach((genre) => {
+    Object.keys(newestByGenre).forEach((genre) => { 
       newestByGenre[genre].forEach(registerContent);
       if (genre && genre !== "General") {
         genreSet.add(genre);
@@ -272,13 +332,13 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.heroPlay.dataset.resume = progress?.resumePositionSec || 0;
     elements.heroPlay.dataset.duration = progress?.durationSec || 0;
     elements.heroPlay.dataset.episodeId = progress?.episode?.id || "";
-    // Open content modal for both series and movies
-    elements.heroPlay.textContent = stored.type === "series" ? "View Episodes" : (progress ? "Resume" : "Play");
+    elements.heroPlay.textContent = stored.type === "series" ? "View Episodes" : getPlayLabel(progress);
     elements.heroPlay.onclick = () => openContentModal(stored);
 
-    // Show "Watch from Beginning" button only if progress exists
     if (elements.heroWatchFromBeginning) {
-      if (progress && progress.watchPercentage > 0) {
+      const pct = progress ? (progress.watchPercentage || (progress.durationSec ? (progress.lastPositionSec / progress.durationSec) * 100 : 0)) : 0;
+      const rewatch = progress ? isRewatch(progress) : false;
+      if (progress && pct > 0 && !rewatch) {
         elements.heroWatchFromBeginning.style.display = "inline-block";
         elements.heroWatchFromBeginning.dataset.contentId = stored.id;
         elements.heroWatchFromBeginning.onclick = () => handlePlayFromBeginning(stored.id);
@@ -288,45 +348,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     elements.heroInfo.onclick = () => {
-      const info = [
-        stored.title,
-        elements.heroMeta.textContent,
-        "",
-        stored.info || "No description available.",
-      ].join("\n");
-      alert(info);
+      openContentModal(stored);
     };
-  }
-
-  function getCardWidthForStrip(strip, viewport) {
-    if (!strip) return viewport?.clientWidth || 0;
-    const firstCard = strip.querySelector(".media-card");
-    if (!firstCard) return viewport?.clientWidth || 0;
-    const style = window.getComputedStyle(firstCard);
-    const marginRight = parseFloat(style.marginRight || CARD_GAP);
-    const marginLeft = parseFloat(style.marginLeft || 0);
-    return firstCard.offsetWidth + marginLeft + marginRight;
-  }
-
-  function buildCircularMarkup(cards, options = {}) {
-    const markup = cards.map((card) => cardHTML(card, options));
-    if (markup.length === 0) {
-      return { markup: "", cloneCount: 0 };
-    }
-    const clones = Math.min(markup.length, 7);
-    const leadingClones = markup.slice(-clones);
-    const trailingClones = markup.slice(0, clones);
-    return {
-      markup: [...leadingClones, ...markup, ...trailingClones].join(""),
-      cloneCount: clones,
-    };
-  }
-
-  function shouldLoopSection(cards, options = {}) {
-    if (typeof options.forceLoop === "boolean") {
-      return options.forceLoop;
-    }
-    return Array.isArray(cards) && cards.length >= MIN_LOOP_ITEMS;
   }
 
   function renderSections() {
@@ -335,6 +358,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (state.searchQuery.length >= 2) {
       renderSearchResults();
+      return;
+    }
+
+    // If we're in a specific navigation mode, don't render default sections
+    if (state.activeNav !== "home") {
+      // Let the navigation handler render the appropriate content
       return;
     }
 
@@ -399,12 +428,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const content = item.content || item;
         const merged = mergeContent(content);
 
-        // Filter by category
         if (state.filter !== "all" && merged.category !== state.filter) {
           return null;
         }
 
-        // Filter by watched status
         if (state.watchedFilter !== "all") {
           const hasProgress = state.progressMap.has(merged.id);
           const isWatched = hasProgress && state.progressMap.get(merged.id)?.watchPercentage > 0;
@@ -420,7 +447,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return {
           content: merged,
           reason: item.reason,
-          progress: options.showProgress ? item : null,
+          progress: options.showProgress ? state.progressMap.get(merged.id) : null, 
         };
       })
       .filter(Boolean);
@@ -437,16 +464,14 @@ document.addEventListener("DOMContentLoaded", () => {
             return titleB.localeCompare(titleA);
           
           case "rating":
-            // Sort by score (likes + completions)
-            const scoreA = contentA.score || (contentA.likes || 0) + (contentA.completions || 0);
-            const scoreB = contentB.score || (contentB.likes || 0) + (contentB.completions || 0);
-            return scoreB - scoreA; // Descending order (highest first)
+            const ratingA = parseFloat(contentA.rating) || 0;
+            const ratingB = parseFloat(contentB.rating) || 0;
+            return ratingB - ratingA; 
           
           case "popularity":
-            // Sort by popularity (likes)
             const likesA = contentA.likes || 0;
             const likesB = contentB.likes || 0;
-            return likesB - likesA; // Descending order (highest first)
+            return likesB - likesA; 
           
           case "az":
           default:
@@ -489,22 +514,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const viewport = document.createElement("div");
     viewport.className = "carousel-viewport";
     viewport.id = viewportId;
-
-    const strip = document.createElement("div");
-    strip.className = "carousel-strip";
+ 
+     const strip = document.createElement("div");
+     strip.className = "carousel-strip";
     
-    const enableLoop = shouldLoopSection(cards, options);
-    if (cards.length > 0 && enableLoop) {
-      const { markup, cloneCount } = buildCircularMarkup(cards, options);
-      strip.innerHTML = markup;
-      strip.dataset.originalLength = cards.length;
-      strip.dataset.cloneCount = cloneCount;
-      strip.dataset.isCircular = "true";
-    } else {
+    if (cards.length > 0) {
       strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
       strip.dataset.originalLength = cards.length;
-      strip.dataset.cloneCount = "0";
-      strip.dataset.isCircular = "false";
+      
+      // --- THIS IS THE FIX ---
+      // We are turning OFF circular scrolling.
+      strip.dataset.isCircular = "false"; 
+    } else {
+      strip.innerHTML = cards.map((card) => cardHTML(card, options)).join("");
     }
 
     viewport.appendChild(strip);
@@ -514,46 +536,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     elements.sections.appendChild(sectionEl);
 
-    if (cards.length > 0 && strip.dataset.isCircular === "true") {
-      setTimeout(() => {
-        const firstCard = strip.querySelector(".media-card");
-        if (firstCard) {
-          const cardWidth = getCardWidthForStrip(strip, viewport);
-          const clones = parseInt(strip.dataset.cloneCount || "0", 10);
-          viewport.scrollLeft = cardWidth * clones;
-        } else {
-          viewport.scrollLeft = 0;
-        }
-      }, 60);
-    }
-
     bindArrows(viewportId);
-    
-    // Setup infinite scroll for genre sections
-    if (options.infiniteScroll && options.genre) {
-      setupInfiniteScroll(viewportId, options.genre);
-      // Initialize pagination state if not exists
-      if (!state.genrePagination[options.genre]) {
-        // Check if there might be more content (if we have exactly 10 items, likely more available)
-        const initialItemCount = cards.length;
-        state.genrePagination[options.genre] = {
-          page: 1,
-          hasMore: true, // Will be updated when we try to load more
-          loading: false,
-          initialCount: initialItemCount,
-        };
-        // Pre-check if more content is available
-        checkIfMoreContentAvailable(options.genre, initialItemCount);
-      }
-    }
   }
 
   function mergeContent(content) {
     if (!content || !content.id) return content;
     const stored = state.contentById.get(content.id);
     if (stored) return stored;
-    state.contentById.set(content.id, content);
-    return content;
+    
+    const existing = {};
+    const merged = { ...existing, ...content };
+    merged.poster = normalizeAsset(merged.poster || existing.poster || "");
+    merged.backdrop = normalizeAsset(merged.backdrop || existing.backdrop || "");
+    merged.rating = merged.rating || existing.rating || 'N/A';
+    state.contentById.set(content.id, merged);
+    return merged;
   }
 
   function cardHTML(card, options = {}) {
@@ -568,6 +565,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const completions = content.completions || 0;
     const score = content.score || likeCount + completions;
     const poster = content.poster || "images/fallback.jpg";
+    const rating = content.rating || 'N/A'; 
 
     const progressMarkup = card.progress
       ? progressHTML(card.progress)
@@ -589,6 +587,9 @@ document.addEventListener("DOMContentLoaded", () => {
           <span><i class="bi bi-heart-fill ${
             liked ? "text-danger" : "text-secondary"
           }"></i> ${formatNumber(likeCount)}</span>
+          
+          <span class="ms-auto"><i class="bi bi-star-fill text-white"></i> ${rating}</span>
+
         </div>
         <p class="flyout-text">${escapeHtml(content.info || "")}</p>
     </div>
@@ -597,9 +598,9 @@ document.addEventListener("DOMContentLoaded", () => {
   return `
       <article class="media-card" data-id="${content.id}">
         ${flyout}
-      <img class="media-thumb" src="${poster}" alt="${escapeHtml(
+        <img class="media-thumb" src="${poster}" alt="${escapeHtml(
       content.title
-    )}" onerror="this.onerror=null;this.src='/images/fallback.jpg';">
+    )}" onerror="this.src='images/fallback.jpg'">
       <div class="media-body">
           <h3 class="media-title" title="${escapeHtml(
             content.title
@@ -610,10 +611,12 @@ document.addEventListener("DOMContentLoaded", () => {
               content.category || "General"
             )}</span>
           </div>
+
           <div class="media-rating mt-1">
               <i class="bi bi-star-fill"></i>
-              <span>${escapeHtml(content.rating || 'N/A')}</span>
+              <span>${rating}</span>
           </div>
+          
           <p class="media-meta mt-2" title="${escapeHtml(
             content.info || ""
           )}">${escapeHtml(content.info || "")}</p>
@@ -630,7 +633,6 @@ document.addEventListener("DOMContentLoaded", () => {
     )}</span>
           </div>
           <div class="card-meta">
-            <span class="meta-item" data-score-for="${content.id}">Score: ${formatNumber(score)}</span>
             ${
               completions
                 ? `<span class="meta-item">Completed: ${formatNumber(completions)}</span>`
@@ -655,8 +657,8 @@ document.addEventListener("DOMContentLoaded", () => {
           )
       )
     );
-
-    const resumeLabel = formatTime(progress.resumePositionSec || 0);
+    
+    const resumeLabel = formatTime(progress.resumePositionSec || progress.lastPositionSec || 0);
 
     return `
       <div class="progress-track" role="progressbar" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100">
@@ -667,13 +669,13 @@ document.addEventListener("DOMContentLoaded", () => {
         <button class="resume-btn btn btn-sm btn-light" data-content-id="${
           progress.content.id
         }" data-progress-id="${progress.id}">
-          Resume
+          ${getPlayLabel(progress)}
         </button>
-        <button class="watch-from-beginning-btn btn btn-sm" data-content-id="${
+        ${!isRewatch(progress) ? `<button class="watch-from-beginning-btn btn btn-sm" data-content-id="${
           progress.content.id
         }">
           <i class="bi bi-arrow-clockwise me-1"></i>Watch from Beginning
-        </button>
+        </button>` : ``}
       </div>
     `;
   }
@@ -703,14 +705,28 @@ document.addEventListener("DOMContentLoaded", () => {
     if (elements.filter) {
       elements.filter.addEventListener("change", (e) => {
         state.filter = e.target.value || "all";
-        renderSections();
+        // Re-render based on current navigation
+        if (state.activeNav === "home") {
+          renderSections();
+        } else if (state.activeNav === "series") {
+          renderFilteredContent("series");
+        } else if (state.activeNav === "movie") {
+          renderFilteredContent("movie");
+        } else {
+          handleNavigation(state.activeNav);
+        }
       });
     }
 
     if (elements.sort) {
       elements.sort.addEventListener("change", (e) => {
         state.sort = e.target.value || "az";
-        renderSections();
+        // Re-render based on current navigation
+        if (state.activeNav === "home") {
+          renderSections();
+        } else {
+          handleNavigation(state.activeNav);
+        }
       });
     }
 
@@ -757,19 +773,340 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.sections.addEventListener("click", handleSectionClick);
     }
 
-    // Episodes modal close handlers
     if (elements.episodesModalClose) {
       elements.episodesModalClose.addEventListener("click", closeEpisodesModal);
     }
     if (elements.episodesModalOverlay) {
       elements.episodesModalOverlay.addEventListener("click", closeEpisodesModal);
     }
-    // Close modal on Escape key
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && elements.episodesModal.style.display !== "none") {
         closeEpisodesModal();
       }
     });
+
+    // Navigation menu handlers
+    const navLinks = document.querySelectorAll('.nav-item a[data-nav]');
+    navLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const navType = link.dataset.nav;
+        
+        // Update active state
+        navLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+        
+        // Handle navigation
+        handleNavigation(navType);
+        
+        // Close mobile menu if open
+        const navMenu = document.getElementById('navMenu');
+        if (navMenu && navMenu.classList.contains('mobile-visible')) {
+          navMenu.classList.remove('mobile-visible');
+          const toggleBtn = document.getElementById('mobileMenuToggle');
+          if (toggleBtn) {
+            const icon = toggleBtn.querySelector('i');
+            if (icon) icon.className = 'bi bi-list';
+          }
+        }
+      });
+    });
+
+    // Mobile menu toggle
+    const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+    const navMenu = document.getElementById('navMenu');
+    if (mobileMenuToggle && navMenu) {
+      mobileMenuToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navMenu.classList.toggle('mobile-visible');
+        const icon = mobileMenuToggle.querySelector('i');
+        if (icon) {
+          if (navMenu.classList.contains('mobile-visible')) {
+            icon.className = 'bi bi-x-lg';
+            // Add close button inside menu
+            if (!navMenu.querySelector('.mobile-menu-close')) {
+              const closeBtn = document.createElement('button');
+              closeBtn.className = 'mobile-menu-close';
+              closeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+              closeBtn.addEventListener('click', () => {
+                navMenu.classList.remove('mobile-visible');
+                icon.className = 'bi bi-list';
+                closeBtn.remove();
+              });
+              navMenu.appendChild(closeBtn);
+            }
+          } else {
+            icon.className = 'bi bi-list';
+            const closeBtn = navMenu.querySelector('.mobile-menu-close');
+            if (closeBtn) closeBtn.remove();
+          }
+        }
+      });
+
+      // Close menu when clicking outside
+      document.addEventListener('click', (e) => {
+        if (navMenu.classList.contains('mobile-visible') && 
+            !navMenu.contains(e.target) && 
+            !mobileMenuToggle.contains(e.target)) {
+          navMenu.classList.remove('mobile-visible');
+          const icon = mobileMenuToggle.querySelector('i');
+          if (icon) icon.className = 'bi bi-list';
+          const closeBtn = navMenu.querySelector('.mobile-menu-close');
+          if (closeBtn) closeBtn.remove();
+        }
+      });
+    }
+  }
+
+  function handleNavigation(navType) {
+    state.activeNav = navType;
+    state.searchQuery = ""; // Clear search when navigating
+    state.searchResults = [];
+    if (elements.searchInput) {
+      elements.searchInput.value = "";
+      elements.searchInput.classList.remove("show");
+    }
+
+    switch(navType) {
+      case "home":
+        // Reset filters and show all content
+        state.filter = "all";
+        state.watchedFilter = "all";
+        if (elements.filter) elements.filter.value = "all";
+        if (elements.watchedFilter) elements.watchedFilter.value = "all";
+        renderSections();
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        break;
+      
+      case "series":
+        // Filter to show only series
+        state.filter = "all"; // Keep category filter as "all"
+        state.typeFilter = "series"; // Add type filter
+        if (elements.filter) elements.filter.value = "all";
+        renderFilteredContent("series");
+        break;
+      
+      case "movie":
+        // Filter to show only movies
+        state.filter = "all";
+        state.typeFilter = "movie";
+        if (elements.filter) elements.filter.value = "all";
+        renderFilteredContent("movie");
+        break;
+      
+      case "popular":
+        // Show popular content
+        state.filter = "all";
+        state.typeFilter = null;
+        if (elements.filter) elements.filter.value = "all";
+        renderPopularContent();
+        break;
+      
+      case "mylist":
+        // Show liked content
+        state.filter = "all";
+        state.typeFilter = null;
+        if (elements.filter) elements.filter.value = "all";
+        renderMyList();
+        break;
+    }
+  }
+
+  function renderFilteredContent(type) {
+    if (!elements.sections) return;
+    elements.sections.innerHTML = "";
+
+    const allContent = [];
+    
+    // Collect all content from different sections
+    (state.sections.continueWatching || []).forEach(item => {
+      if (item?.content) allContent.push(item.content);
+    });
+    (state.sections.recommendations || []).forEach(item => {
+      if (item?.content) allContent.push(item.content);
+      else if (item?.id) allContent.push(item);
+    });
+    (state.sections.popular || []).forEach(item => {
+      if (item?.id) allContent.push(item);
+    });
+    Object.values(state.sections.newestByGenre || {}).forEach(items => {
+      items.forEach(item => {
+        if (item?.id) allContent.push(item);
+      });
+    });
+
+    // Filter by type and category
+    const filtered = allContent.filter(item => {
+      if (!item) return false;
+      const itemType = item.type || (item.content && item.content.type);
+      if (itemType !== type) return false;
+      
+      // Also apply category filter if set
+      if (state.filter !== "all") {
+        const itemCategory = item.category || (item.content && item.content.category);
+        if (itemCategory !== state.filter) return false;
+      }
+      
+      return true;
+    });
+
+    // Remove duplicates
+    const unique = [];
+    const seen = new Set();
+    filtered.forEach(item => {
+      const id = item.id || (item.content && item.content.id);
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        unique.push(item);
+      }
+    });
+
+    if (unique.length === 0) {
+      renderEmptyState(`No ${type === "series" ? "TV Shows" : "Movies"} found.`);
+      return;
+    }
+
+    // Sort by current sort setting
+    unique.sort((a, b) => {
+      const contentA = a.content || a;
+      const contentB = b.content || b;
+      
+      switch (state.sort) {
+        case "za":
+          return (contentB.title || "").toLowerCase().localeCompare((contentA.title || "").toLowerCase());
+        case "rating":
+          const ratingA = parseFloat(contentA.rating) || 0;
+          const ratingB = parseFloat(contentB.rating) || 0;
+          return ratingB - ratingA;
+        case "popularity":
+          const likesA = contentA.likes || 0;
+          const likesB = contentB.likes || 0;
+          return likesB - likesA;
+        case "az":
+        default:
+          return (contentA.title || "").toLowerCase().localeCompare((contentB.title || "").toLowerCase());
+      }
+    });
+
+    const title = type === "series" ? "TV Shows" : "Movies";
+    renderSection(
+      `filtered-${type}`,
+      title,
+      unique.map(item => ({
+        content: item.content || item,
+        progress: state.progressMap.get((item.content || item).id),
+      })),
+      { showProgress: true, allowSort: false }
+    );
+  }
+
+  async function renderPopularContent() {
+    if (!elements.sections) return;
+    elements.sections.innerHTML = "";
+
+    try {
+      const response = await fetch(`/api/profiles/${state.profileId}/feed`);
+      if (!response.ok) throw new Error(`Feed fetch failed: ${response.status}`);
+      const payload = await response.json();
+      
+      const popular = payload.sections?.popular || [];
+      
+      if (popular.length === 0) {
+        renderEmptyState("No popular content found.");
+        return;
+      }
+
+      // Sort by current sort setting
+      const sorted = [...popular].sort((a, b) => {
+        switch (state.sort) {
+          case "za":
+            return (b.title || "").toLowerCase().localeCompare((a.title || "").toLowerCase());
+          case "rating":
+            const ratingA = parseFloat(a.rating) || 0;
+            const ratingB = parseFloat(b.rating) || 0;
+            return ratingB - ratingA;
+          case "popularity":
+            const likesA = a.likes || 0;
+            const likesB = b.likes || 0;
+            return likesB - likesA;
+          case "az":
+          default:
+            return (a.title || "").toLowerCase().localeCompare((b.title || "").toLowerCase());
+        }
+      });
+
+      renderSection(
+        "popular-nav",
+        "New & Popular",
+        sorted.map(item => ({
+          content: item,
+          progress: state.progressMap.get(item.id),
+        })),
+        { showProgress: true, allowSort: false }
+      );
+    } catch (err) {
+      console.error("Failed to load popular content:", err);
+      renderEmptyState("Error loading popular content.");
+    }
+  }
+
+  async function renderMyList() {
+    if (!elements.sections) return;
+    elements.sections.innerHTML = "";
+
+    const likedIds = Array.from(state.liked);
+    
+    if (likedIds.length === 0) {
+      renderEmptyState("Your list is empty. Like some titles to add them here!");
+      return;
+    }
+
+    const likedContent = [];
+    for (const contentId of likedIds) {
+      const content = state.contentById.get(contentId);
+      if (content) {
+        likedContent.push({
+          content: content,
+          progress: state.progressMap.get(contentId),
+        });
+      }
+    }
+
+    if (likedContent.length === 0) {
+      renderEmptyState("Your list is empty.");
+      return;
+    }
+
+    // Sort by current sort setting
+    likedContent.sort((a, b) => {
+      const contentA = a.content;
+      const contentB = b.content;
+      
+      switch (state.sort) {
+        case "za":
+          return (contentB.title || "").toLowerCase().localeCompare((contentA.title || "").toLowerCase());
+        case "rating":
+          const ratingA = parseFloat(contentA.rating) || 0;
+          const ratingB = parseFloat(contentB.rating) || 0;
+          return ratingB - ratingA;
+        case "popularity":
+          const likesA = contentA.likes || 0;
+          const likesB = contentB.likes || 0;
+          return likesB - likesA;
+        case "az":
+        default:
+          return (contentA.title || "").toLowerCase().localeCompare((contentB.title || "").toLowerCase());
+      }
+    });
+
+    renderSection(
+      "mylist",
+      "My List",
+      likedContent,
+      { showProgress: true, allowSort: false }
+    );
   }
 
   async function performSearch(query) {
@@ -829,11 +1166,25 @@ document.addEventListener("DOMContentLoaded", () => {
     if (card) {
       event.preventDefault();
       const contentId = card.dataset.id;
-      const content = state.contentById.get(contentId);
-      if (content) {
-        // Open content modal for both series and movies
-    openContentModal(content);
+      const cached = state.contentById.get(contentId);
+
+      if (cached) {
+        renderHero(cached);
+        openContentModal(cached);
+        return;
       }
+
+      fetch(`/api/content/${contentId}`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((content) => {
+          if (!content) return;
+          const merged = mergeContent(content) || content;
+          renderHero(merged);
+          openContentModal(merged);
+        })
+        .catch((error) => {
+          console.warn(`Failed to load content ${contentId}:`, error);
+        });
     }
   }
 
@@ -929,51 +1280,22 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!content) return;
 
     const progress = state.progressMap.get(contentId);
-    const payload = {
-      contentId,
-      episodeId: progress?.episode?.id,
-      lastPositionSec: progress?.resumePositionSec || 0,
-      durationSec: progress?.durationSec || 0,
-      status: "in_progress",
-      event: "start",
-    };
 
-    try {
-      const response = await fetch(
-        `/api/profiles/${state.profileId}/progress`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`Progress update failed with status ${response.status}`);
+    if (isRewatch(progress)) {
+      if (content.type === 'series') {
+        await handlePlayFromBeginning(contentId);
+      } else {
+        startPlayback(content, null, 0);
       }
-      const result = await response.json();
-      const updated = result.progress;
-      if (updated?.content) {
-        state.progressMap.set(updated.content.id, updated);
-        const list = state.sections.continueWatching || [];
-        const idx = list.findIndex((entry) => entry.content?.id === updated.content.id);
-        if (idx >= 0) {
-          list[idx] = updated;
-        } else {
-          list.unshift(updated);
-        }
-        state.sections.continueWatching = list;
-        buildIndices();
-        renderSections();
-      }
+      return;
+    }
 
-      const resume = progress?.resumePositionSec || 0;
-      alert(
-        resume > 0
-          ? `Resuming ${content.title} from ${formatTime(resume)}.`
-          : `Playing ${content.title}...`
-      );
-    } catch (error) {
-      console.error("Failed to update progress:", error);
+    const startTime = progress ? progress.resumePositionSec : 0;
+    if (content.type === 'movie') {
+      startPlayback(content, null, startTime);
+    } else {
+      const episodeId = progress ? progress.episode?.id : null;
+      startPlayback(content, episodeId, startTime);
     }
   }
 
@@ -983,9 +1305,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       let episodeId = null;
-      let durationSec = 0;
-
-      // For series, get the first episode (season 1, episode 1)
+      
       if (content.type === "series") {
         const response = await fetch(
           `/api/content/${contentId}/first-episode`
@@ -993,73 +1313,22 @@ document.addEventListener("DOMContentLoaded", () => {
         if (response.ok) {
           const firstEpisode = await response.json();
           episodeId = firstEpisode.id;
-          durationSec = firstEpisode.durationSec || 0;
         } else {
-          console.warn("Could not find first episode for series:", contentId);
-          // Continue without episodeId - the backend will handle it
+           throw new Error('Could not find first episode');
         }
       }
+      
+      closeEpisodesModal();
+      startPlayback(content, episodeId, 0); 
 
-      // Reset progress to beginning (position 0)
-      const payload = {
-        contentId,
-        episodeId: episodeId || null,
-        lastPositionSec: 0,
-        durationSec: durationSec || 0,
-        watchPercentage: 0,
-        status: "in_progress",
-        event: "start",
-      };
-
-      const progressResponse = await fetch(
-        `/api/profiles/${state.profileId}/progress`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      if (!progressResponse.ok) {
-        throw new Error(
-          `Progress update failed with status ${progressResponse.status}`
-        );
-      }
-
-      const result = await progressResponse.json();
-      const updated = result.progress;
-      if (updated?.content) {
-        state.progressMap.set(updated.content.id, updated);
-        const list = state.sections.continueWatching || [];
-        const idx = list.findIndex(
-          (entry) => entry.content?.id === updated.content.id
-        );
-        if (idx >= 0) {
-          list[idx] = updated;
-        } else {
-          list.unshift(updated);
-        }
-        state.sections.continueWatching = list;
-        buildIndices();
-        renderSections();
-        
-        // Update hero if this content is currently displayed
-        const heroContentId = elements.heroPlay?.dataset.contentId;
-        if (heroContentId === contentId) {
-          renderHero(content);
-        }
-      }
-
-      const episodeInfo = content.type === "series" && episodeId
-        ? " from the first episode"
-        : "";
-      alert(`Starting ${content.title}${episodeInfo} from the beginning...`);
     } catch (error) {
       console.error("Failed to start from beginning:", error);
       alert("Unable to start playback from the beginning. Please try again.");
     }
   }
 
+  // --- THIS IS THE FIX ---
+  // A simple, non-cyclic bindArrows function.
   function bindArrows(viewportId) {
     const viewport = document.getElementById(viewportId);
     if (!viewport || viewport.dataset.bound === "1") return;
@@ -1068,116 +1337,60 @@ document.addEventListener("DOMContentLoaded", () => {
     const prev = section.querySelector(".arrow-btn.prev");
     const next = section.querySelector(".arrow-btn.next");
     const strip = viewport.querySelector(".carousel-strip");
-    const isCircular = strip?.dataset.isCircular === "true";
 
-    const getOriginalLength = () =>
-      strip ? parseInt(strip.dataset.originalLength || "0", 10) : 0;
-    const getCloneCount = () =>
-      strip ? parseInt(strip.dataset.cloneCount || "0", 10) : 0;
-
-    const getCardWidth = () => getCardWidthForStrip(strip, viewport);
-
-    const jumpWithoutAnimation = (position) => {
-      const previousBehavior = viewport.style.scrollBehavior;
-      viewport.style.scrollBehavior = "auto";
-      viewport.scrollLeft = position;
-      viewport.style.scrollBehavior = previousBehavior || "";
+    const measureCard = () => {
+      const firstCard = strip?.querySelector(".media-card");
+      if (!firstCard) return null;
+      const styles = window.getComputedStyle(firstCard);
+      const marginRight = parseFloat(styles.marginRight || "0");
+      const marginLeft = parseFloat(styles.marginLeft || "0");
+      const gap = marginRight > 0 ? marginRight : marginLeft;
+      const width = firstCard.offsetWidth + gap;
+      return width > 0 ? width : null;
     };
 
-    const ensureCircularBounds = () => {
-      const originalLength = getOriginalLength();
-      const cloneCount = getCloneCount();
-      if (!isCircular || !originalLength || cloneCount === 0) return;
-      const cardWidth = getCardWidth();
-      const cloneWidth = cardWidth * cloneCount;
-      const contentWidth = cardWidth * originalLength;
-      const leftBoundary = cloneWidth;
-      const rightBoundary = cloneWidth + contentWidth;
-      const threshold = cardWidth / 2;
+    const scrollByPage = (direction) => {
+      if (!strip) return;
+      const cardWidth = measureCard();
+      if (!cardWidth) return;
 
-      if (viewport.scrollLeft >= rightBoundary - threshold) {
-        jumpWithoutAnimation(viewport.scrollLeft - contentWidth);
-      } else if (viewport.scrollLeft <= leftBoundary - threshold) {
-        jumpWithoutAnimation(viewport.scrollLeft + contentWidth);
+      const cardsPerPage = Math.max(1, Math.round(viewport.clientWidth / cardWidth));
+      const distance = cardWidth * cardsPerPage;
+      const maxScroll = Math.max(0, strip.scrollWidth - viewport.clientWidth);
+      if (maxScroll === 0) return;
+
+      const current = viewport.scrollLeft;
+
+      if (direction > 0) {
+        if (current >= maxScroll - 2) {
+          viewport.scrollTo({ left: 0, behavior: "auto" });
+        } else {
+          const target = Math.min(current + distance, maxScroll);
+          viewport.scrollTo({ left: target, behavior: "smooth" });
+        }
+      } else {
+        if (current <= 2) {
+          viewport.scrollTo({ left: maxScroll, behavior: "auto" });
+        } else {
+          const target = Math.max(current - distance, 0);
+          viewport.scrollTo({ left: target, behavior: "smooth" });
+        }
       }
-    };
-
-    const updateDisabled = () => {
-      if (prev) prev.disabled = false;
-      if (next) next.disabled = false;
-      const hasScrollRoom = viewport.scrollWidth - viewport.clientWidth > 2;
-      const showArrows = isCircular ? hasScrollRoom : viewport.scrollWidth - viewport.clientWidth > 2;
-
-      if (prev) {
-        prev.style.visibility = showArrows ? "visible" : "hidden";
-      }
-      if (next) {
-        next.style.visibility = showArrows ? "visible" : "hidden";
-      }
-
-      if (!isCircular) {
-        const maxScroll = viewport.scrollWidth - viewport.clientWidth;
-        if (prev) prev.disabled = viewport.scrollLeft <= 1;
-        if (next) next.disabled = viewport.scrollLeft >= maxScroll - 1;
-      }
-    };
-
-    const page = () => {
-      const cardWidth = getCardWidth();
-      return cardWidth > 0 ? cardWidth * 7 : viewport.clientWidth;
     };
 
     if (prev) {
-      prev.addEventListener("click", () => {
-        viewport.scrollBy({
-          left: -page(),
-          behavior: "smooth",
-        });
-        setTimeout(() => {
-          ensureCircularBounds();
-          updateDisabled();
-        }, 350);
-      });
+      prev.disabled = false;
+      prev.addEventListener("click", () => scrollByPage(-1));
     }
 
     if (next) {
-      next.addEventListener("click", () => {
-        viewport.scrollBy({
-          left: page(),
-          behavior: "smooth",
-        });
-        setTimeout(() => {
-          ensureCircularBounds();
-          updateDisabled();
-        }, 350);
-      });
-    }
-
-    let rafId = null;
-    viewport.addEventListener(
-      "scroll",
-      () => {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(() => {
-          ensureCircularBounds();
-          updateDisabled();
-        });
-      },
-      { passive: true }
-    );
-
-    if (window.ResizeObserver) {
-      const observer = new ResizeObserver(() => {
-        ensureCircularBounds();
-        updateDisabled();
-      });
-      observer.observe(viewport);
+      next.disabled = false;
+      next.addEventListener("click", () => scrollByPage(1));
     }
 
     viewport.dataset.bound = "1";
-    ensureCircularBounds();
-    updateDisabled();
   }
+  // --- END OF FIX ---
 
   function setupInfiniteScroll(viewportId, genre) {
     const viewport = document.getElementById(viewportId);
@@ -1194,36 +1407,16 @@ document.addEventListener("DOMContentLoaded", () => {
         const scrollLeft = viewport.scrollLeft;
         const scrollWidth = viewport.scrollWidth;
         const clientWidth = viewport.clientWidth;
+        
         const scrollPercentage = (scrollLeft + clientWidth) / scrollWidth;
 
-        // Load more when scrolled 70% to the right (for circular carousel, check middle section)
         const pagination = state.genrePagination[genre];
         if (pagination && pagination.hasMore && !pagination.loading) {
-          const strip = viewport.querySelector(".carousel-strip");
-          const isCircular = strip?.dataset.isCircular === "true";
-          
-          if (isCircular) {
-            // For circular carousel, check if we're near the end (70% scrolled)
-            const scrollWidth = viewport.scrollWidth;
-            const clientWidth = viewport.clientWidth;
-            const maxScroll = scrollWidth - clientWidth;
-            const scrollPercentage = maxScroll > 0 ? scrollLeft / maxScroll : 0;
-            
-            // Load more when scrolled 70% to the right
-            if (scrollPercentage > 0.7) {
-              isLoading = true;
-              loadMoreGenreContent(genre, viewportId).finally(() => {
-                isLoading = false;
-              });
-            }
-          } else {
-            // For non-circular carousel, use percentage
-            if (scrollPercentage > 0.7) {
-              isLoading = true;
-              loadMoreGenreContent(genre, viewportId).finally(() => {
-                isLoading = false;
-              });
-            }
+          if (scrollPercentage > 0.7) { 
+            isLoading = true;
+            loadMoreGenreContent(genre, viewportId).finally(() => {
+              isLoading = false;
+            });
           }
         }
       }, 150);
@@ -1243,7 +1436,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     } catch (error) {
-      // Silently fail - will be checked when user scrolls
       console.debug("Pre-check for more content failed:", error);
     }
   }
@@ -1272,14 +1464,12 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // Merge new items into state
       newItems.forEach((item) => {
         mergeContent(item);
         const genreKey = item.category || genre;
         if (!state.sections.newestByGenre[genreKey]) {
           state.sections.newestByGenre[genreKey] = [];
         }
-        // Avoid duplicates
         const exists = state.sections.newestByGenre[genreKey].some(
           (existing) => existing.id === item.id || (existing.content && existing.content.id === item.id)
         );
@@ -1288,82 +1478,26 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      // Update pagination state
       pagination.page = nextPage;
       pagination.hasMore = data.hasMore || false;
       pagination.loading = false;
 
-      // Append new items to the carousel
       const viewport = document.getElementById(viewportId);
       if (viewport) {
         const strip = viewport.querySelector(".carousel-strip");
-        if (strip && strip.dataset.isCircular === "true") {
-          const genreKey = genre;
-          const allItems = state.sections.newestByGenre[genreKey] || [];
-          const allCards = allItems.map((item) => {
-            const merged = mergeContent(item);
-            return {
+        const cards = newItems.map((item) => {
+          const merged = mergeContent(item);
+          return cardHTML(
+            {
               content: merged,
               reason: null,
               progress: null,
-            };
-          });
-
-          const currentScroll = viewport.scrollLeft;
-          const previousCloneCount = parseInt(strip.dataset.cloneCount || "0", 10);
-          const previousCardWidth = getCardWidthForStrip(strip, viewport);
-          const previousCloneWidth = previousCardWidth * previousCloneCount;
-          const relativePosition = Math.max(currentScroll - previousCloneWidth, 0);
-
-          const enableLoop = shouldLoopSection(allCards, { allowSort: false });
-          if (enableLoop) {
-            const { markup, cloneCount } = buildCircularMarkup(allCards, { allowSort: false });
-            strip.innerHTML = markup;
-            strip.dataset.cloneCount = cloneCount.toString();
-            strip.dataset.isCircular = "true";
-          } else {
-            strip.innerHTML = allCards
-              .map((card) =>
-                cardHTML(card, {
-                  allowSort: false,
-                })
-              )
-              .join("");
-            strip.dataset.cloneCount = "0";
-            strip.dataset.isCircular = "false";
-          }
-          strip.dataset.originalLength = allCards.length.toString();
-
-          const newCardWidth = getCardWidthForStrip(strip, viewport);
-          const contentWidth = newCardWidth * allItems.length;
-          const maxRelative = Math.max(contentWidth - viewport.clientWidth, 0);
-          const clampedRelative = Math.min(relativePosition, maxRelative);
-          const cloneCount = parseInt(strip.dataset.cloneCount || "0", 10);
-          const targetScroll = enableLoop
-            ? newCardWidth * cloneCount + clampedRelative
-            : clampedRelative;
-
-          const previousBehavior = viewport.style.scrollBehavior;
-          viewport.style.scrollBehavior = "auto";
-          viewport.scrollLeft = targetScroll;
-          viewport.style.scrollBehavior = previousBehavior || "";
-
-          // Trigger a scroll update to refresh arrow state
-          viewport.dispatchEvent(new Event("scroll"));
-        } else if (strip) {
-          const cards = newItems.map((item) => {
-            const merged = mergeContent(item);
-            return cardHTML(
-              {
-                content: merged,
-                reason: null,
-                progress: null,
-              },
-              { allowSort: false }
-            );
-          });
-          strip.innerHTML += cards.join("");
-        }
+            },
+            { allowSort: false }
+          );
+        });
+        strip.innerHTML += cards.join("");
+        bindArrows(viewportId); 
       }
     } catch (error) {
       console.error("Failed to load more genre content:", error);
@@ -1374,12 +1508,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function applyGenreFilter(items) {
     let filtered = items;
     
-    // Filter by category
     if (state.filter !== "all") {
       filtered = filtered.filter((item) => item.category === state.filter);
     }
     
-    // Filter by watched status
     if (state.watchedFilter !== "all") {
       filtered = filtered.filter((item) => {
         const hasProgress = state.progressMap.has(item.id);
@@ -1442,30 +1574,24 @@ document.addEventListener("DOMContentLoaded", () => {
   async function openContentModal(content) {
     if (!content || !elements.episodesModal) return;
 
-    // Get the full content data from state (includes actors)
     let fullContent = state.contentById.get(content.id) || content;
 
-    // Always try to fetch fresh content from API to ensure we have actors
     try {
       const response = await fetch(`/api/content/${content.id}`);
       if (response.ok) {
         const apiContent = await response.json();
         if (apiContent) {
-          // Merge API data with existing data
           fullContent = { ...fullContent, ...apiContent };
-          // Update state
           state.contentById.set(content.id, fullContent);
         }
       }
     } catch (error) {
       console.warn("Could not fetch content details from API, using cached data:", error);
     }
-
-    // Debug: log actors
-    console.log("Content actors:", fullContent.actors, "for content:", fullContent.title);
-    console.log("Full content object:", fullContent);
-
-    // Set modal title and info
+    
+    fullContent.rating = fullContent.rating || 'N/A';
+    state.contentById.set(content.id, fullContent);
+    
     elements.episodesModalTitle.textContent = fullContent.title || "";
     const metaParts = [];
     if (fullContent.year) metaParts.push(fullContent.year);
@@ -1473,15 +1599,28 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fullContent.category) metaParts.push(fullContent.category);
     elements.episodesModalInfo.textContent = metaParts.join(" · ") || "";
 
-    // Show modal
+    const modalHeader = elements.episodesModal.querySelector(".episodes-modal-header");
+    const oldEditBtn = modalHeader.querySelector('.admin-edit-button');
+    if (oldEditBtn) {
+      oldEditBtn.remove();
+    }
+
+    if (state.profile.name.toLowerCase() === 'admin') {
+      const editButtonHtml = `
+        <div class="admin-edit-button">
+            <a href="/admin/add-content?edit=${fullContent.id}" class="btn btn-outline-light">
+                <i class="bi bi-pencil-square"></i> Edit
+            </a>
+        </div>
+      `;
+      modalHeader.insertAdjacentHTML('beforeend', editButtonHtml);
+    }
+
     elements.episodesModal.style.display = "flex";
 
-    // Render content info and actors first
     renderContentInfo(fullContent);
 
-    // If it's a series, load and render episodes
     if (fullContent.type === "series") {
-      // Show loading indicator for episodes
       const loadingHtml = '<div class="episodes-loading">Loading episodes...</div>';
       elements.episodesModalBody.insertAdjacentHTML("beforeend", loadingHtml);
 
@@ -1505,7 +1644,6 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-        // Render episodes grouped by season
         renderEpisodes(episodes, fullContent);
       } catch (error) {
         console.error("Error loading episodes:", error);
@@ -1517,19 +1655,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     } else {
-      // For movies, show play button
       renderMovieActions(fullContent);
     }
   }
 
   function renderContentInfo(content) {
     if (!content || !elements.episodesModalBody) return;
-
-    // Debug: log to see what we have
-    console.log("Rendering content info for:", content.title);
-    console.log("Actors data:", content.actors);
-    console.log("Actors type:", typeof content.actors);
-    console.log("Actors length:", content.actors?.length);
 
     const actors = Array.isArray(content.actors) ? content.actors : [];
     const hasActors = actors.length > 0;
@@ -1562,6 +1693,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <span class="content-detail-value">${escapeHtml(content.info || "")}</span>
           </div>
         </div>
+        
         ${hasActors ? `
           <div class="content-actors-section">
             <h3 class="actors-title">Cast</h3>
@@ -1574,6 +1706,7 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
           </div>
         ` : `<div class="content-actors-section"><p style="color: #b3b3b3; font-size: 0.9rem;">No cast information available.</p></div>`}
+
       </div>
     `;
 
@@ -1587,9 +1720,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const actionsHtml = `
       <div class="movie-actions">
         <button class="movie-play-btn episode-play-btn" data-content-id="${content.id}">
-          <i class="bi bi-play-fill me-2"></i>${progress ? "Resume" : "Play"}
+          <i class="bi bi-play-fill me-2"></i>${getPlayLabel(progress)}
         </button>
-        ${progress && progress.watchPercentage > 0 ? `
+        ${progress && !isRewatch(progress) ? `
           <button class="movie-watch-from-beginning-btn watch-from-beginning-btn" data-content-id="${content.id}">
             <i class="bi bi-arrow-clockwise me-1"></i>Watch from Beginning
           </button>
@@ -1599,12 +1732,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
     elements.episodesModalBody.insertAdjacentHTML("beforeend", actionsHtml);
 
-    // Add event handlers
     const playBtn = elements.episodesModalBody.querySelector(".movie-play-btn");
     if (playBtn) {
-      playBtn.addEventListener("click", () => {
+      playBtn.addEventListener("click", async () => {
         closeEpisodesModal();
-        handlePlay(content.id);
+        if (isRewatch(progress)) {
+          if (content.type === "series") {
+            await handlePlayFromBeginning(content.id);
+          } else {
+            startPlayback(content, null, 0);
+          }
+        } else {
+          const startTime = progress ? progress.resumePositionSec : 0;
+          startPlayback(content, null, startTime);
+        }
       });
     }
 
@@ -1627,7 +1768,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderEpisodes(episodes, content) {
     if (!episodes || episodes.length === 0 || !elements.episodesModalBody) return;
 
-    // Group episodes by season
     const seasons = {};
     episodes.forEach((episode) => {
       const season = episode.season || 1;
@@ -1637,7 +1777,6 @@ document.addEventListener("DOMContentLoaded", () => {
       seasons[season].push(episode);
     });
 
-    // Sort seasons
     const sortedSeasons = Object.keys(seasons).sort((a, b) => Number(a) - Number(b));
 
     let html = `<div class="episodes-section">`;
@@ -1684,7 +1823,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     elements.episodesModalBody.insertAdjacentHTML("beforeend", html);
 
-    // Add click handlers for episodes
     elements.episodesModalBody.querySelectorAll(".episode-play-btn, .episode-item").forEach((element) => {
       element.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1698,66 +1836,469 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function handleEpisodePlay(contentId, episodeId) {
+    const content = state.contentById.get(contentId);
+    if (!content) {
+        alert("Error: Content not found.");
+        return;
+    }
+    
+    closeEpisodesModal(); 
+    startPlayback(content, episodeId, 0); 
+  }
+  
+  // --- Player functions ---
+
+  async function startPlayback(content, episodeId = null, startTime = null) {
+    if (!content) return;
+
+    const playerModal = document.getElementById("playerModal");
+    const playerWrapper = document.querySelector(".player-wrapper");
+    const videoPlayer = document.getElementById("playerVideo");
+    const playerTitle = document.getElementById("playerTitle");
+    const playerSubtitle = document.getElementById("playerSubtitle");
+    
+    if (!playerModal || !videoPlayer) {
+        console.error("CRITICAL ERROR: Player elements (playerModal, videoPlayer) not found in main.html!");
+        return;
+    }
+    
+    let videoUrl = null;
+    let episodeTitle = null;
+    
+    allEpisodes = [];
+    currentEpisodeId = null;
+    playerWrapper.dataset.type = content.type; 
+    playerWrapper.dataset.contentId = content.id; 
+
+    // Check if this content is new (not in continue watching)
+    const wasInContinueWatching = state.sections.continueWatching.some(
+      item => item?.content?.id === content.id
+    );
+    const hasExistingProgress = state.progressMap.has(content.id);
+
+    if (content.type === 'series') {
+        if (!episodeId) {
+            const progress = state.progressMap.get(content.id);
+            episodeId = progress ? progress.episode?.id : null;
+            
+            if (!episodeId) {
+                try {
+                    const response = await fetch(`/api/content/${content.id}/first-episode`);
+                    if (response.ok) {
+                        const firstEpisode = await response.json();
+                        episodeId = firstEpisode.id;
+                        videoUrl = firstEpisode.videoUrl;
+                        episodeTitle = firstEpisode.title;
+                    } else {
+                        throw new Error('No first episode found');
+                    }
+                } catch (err) {
+                    alert('Could not load first episode.');
+                    return;
+                }
+            }
+        }
+        
+        if (!videoUrl) {
+            const episodes = await fetchEpisodes(content.id); 
+            const episode = episodes.find(e => (e._id || e.id) === episodeId);
+            if (episode) {
+                videoUrl = episode.videoUrl;
+                episodeTitle = episode.title;
+            } else {
+                alert('Episode not found.');
+                return;
+            }
+        }
+        
+        await populateEpisodeDrawer(content.id, episodeId);
+        currentEpisodeId = episodeId;
+        
+    } else {
+        videoUrl = content.videoUrl; 
+        document.getElementById("episodeDrawer").classList.remove('visible'); 
+    }
+
+    if (!videoUrl) {
+        videoUrl = content.videoUrl || null;
+        if (!videoUrl) {
+            alert('Video file not found for this content.');
+            return;
+        }
+    }
+    
+    videoPlayer.src = videoUrl;
+    playerTitle.textContent = content.title || '';
+    playerSubtitle.textContent = episodeTitle || ''; 
+    
+    playerModal.classList.add('show'); 
+    
+    if (startTime && startTime > 0) {
+        videoPlayer.currentTime = startTime;
+    }
+
     try {
-      // Get episode details to get duration
-      const episodesResponse = await fetch(`/api/content/${contentId}/episodes`);
-      if (!episodesResponse.ok) {
-        throw new Error("Failed to get episode details");
+        await videoPlayer.play();
+        
+        // If this is new content (not in continue watching), send a "start" event
+        // and refresh continue watching after a short delay to allow the progress to be saved
+        if (!wasInContinueWatching && !hasExistingProgress) {
+          const sendStartEvent = async () => {
+            const durationSec = videoPlayer.duration || 0;
+            if (durationSec > 0) {
+              // Send initial progress update with "start" event
+              try {
+                const payload = {
+                  contentId: content.id,
+                  episodeId: episodeId || null,
+                  lastPositionSec: startTime || 0,
+                  durationSec: durationSec,
+                  status: "in_progress",
+                  event: "start"
+                };
+                
+                await fetch(`/api/profiles/${state.profileId}/progress`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                });
+                
+                // Refresh continue watching after a short delay
+                setTimeout(() => {
+                  refreshContinueWatching();
+                }, 500);
+              } catch (err) {
+                console.error("Failed to send start event:", err);
+              }
+            }
+          };
+          
+          // Check if metadata is already loaded
+          if (videoPlayer.readyState >= 1) {
+            // Metadata already loaded
+            sendStartEvent();
+          } else {
+            // Wait for metadata to load
+            videoPlayer.addEventListener('loadedmetadata', sendStartEvent, { once: true });
+          }
+        }
+    } catch (playError) {
+        console.error("Play failed, requires user interaction in some browsers:", playError);
+    }
+
+    if (!playerEventsBound) {
+        bindPlayerEvents();
+        playerEventsBound = true;
+    }
+  }
+
+  function bindPlayerEvents() {
+    const videoPlayer = document.getElementById("playerVideo");
+    const playerClose = document.getElementById("playerClose");
+    const playerOverlay = document.getElementById("playerOverlay");
+    const playPauseBtn = document.getElementById("playPauseBtn");
+    const rewindBtn = document.getElementById("rewindBtn");
+    const forwardBtn = document.getElementById("forwardBtn");
+    const timeline = document.getElementById("timeline");
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
+    const playerWrapper = document.querySelector(".player-wrapper");
+    const nextEpisodeBtn = document.getElementById("nextEpisodeBtn");
+    const episodeListBtn = document.getElementById("episodeListBtn");
+    const episodeDrawer = document.getElementById("episodeDrawer");
+    const episodeListContainer = document.getElementById("episodeListContainer");
+
+    if (playerClose) playerClose.addEventListener('click', stopPlayback);
+    if (playerOverlay) playerOverlay.addEventListener('click', stopPlayback);
+
+    if (playPauseBtn && videoPlayer) {
+        playPauseBtn.addEventListener('click', () => {
+            if (videoPlayer.paused) {
+                videoPlayer.play();
+            } else {
+                videoPlayer.pause();
+            }
+        });
+        videoPlayer.addEventListener('play', () => {
+            playPauseBtn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+        });
+        videoPlayer.addEventListener('pause', () => {
+            playPauseBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
+        });
+    }
+
+    if (rewindBtn) {
+      rewindBtn.addEventListener('click', () => {
+        if (videoPlayer) videoPlayer.currentTime -= 10;
+      });
+    }
+    if (forwardBtn) {
+      forwardBtn.addEventListener('click', () => {
+        if (videoPlayer) videoPlayer.currentTime += 10;
+      });
+    }
+
+    if (videoPlayer && timeline) {
+      videoPlayer.addEventListener('timeupdate', () => {
+        const progress = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+        timeline.value = progress || 0;
+      });
+      timeline.addEventListener('input', () => {
+        const newTime = (timeline.value * videoPlayer.duration) / 100;
+        videoPlayer.currentTime = newTime;
+      });
+      videoPlayer.addEventListener('loadedmetadata', () => {
+        timeline.max = 100; 
+      });
+    }
+
+    if (fullscreenBtn && playerWrapper) {
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
+                if (document.exitFullscreen) document.exitFullscreen();
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                else if (document.msExitFullscreen) document.msExitFullscreen();
+            } else {
+                const el = playerWrapper;
+                if (el.requestFullscreen) el.requestFullscreen();
+                else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+                else if (el.msRequestFullscreen) el.msRequestFullscreen();
+            }
+        });
+    }
+
+    if (nextEpisodeBtn) {
+        nextEpisodeBtn.addEventListener('click', playNextEpisode);
+    }
+    if (videoPlayer) {
+        videoPlayer.addEventListener('ended', () => {
+            if (playerWrapper.dataset.type === 'series') {
+                playNextEpisode();
+            } else {
+                stopPlayback(); 
+            }
+        });
+    }
+
+    if (episodeListBtn) {
+        episodeListBtn.addEventListener('click', () => {
+            episodeDrawer.classList.toggle('visible');
+        });
+    }
+    if (episodeListContainer) {
+        episodeListContainer.addEventListener('click', handleDrawerEpisodeClick);
+    }
+    
+    if (videoPlayer) {
+      videoPlayer.addEventListener('timeupdate', () => {
+        clearTimeout(progressUpdateTimer); 
+        progressUpdateTimer = setTimeout(() => {
+          if (!videoPlayer.paused && videoPlayer.duration > 0) {
+            const contentId = playerWrapper.dataset.contentId;
+            const lastPositionSec = videoPlayer.currentTime;
+            const durationSec = videoPlayer.duration;
+            
+            if (contentId) {
+              sendProgressUpdate(contentId, currentEpisodeId, lastPositionSec, durationSec);
+            }
+          }
+        }, 5000);
+      });
+    }
+  }
+
+  function stopPlayback() {
+    const videoPlayer = document.getElementById("playerVideo");
+    const playerModal = document.getElementById("playerModal");
+    const episodeDrawer = document.getElementById("episodeDrawer");
+    const playerWrapper = document.querySelector(".player-wrapper");
+    
+    clearTimeout(progressUpdateTimer);
+
+    if (videoPlayer && videoPlayer.duration > 0) {
+        const contentId = playerWrapper.dataset.contentId;
+        const lastPositionSec = videoPlayer.currentTime;
+        const durationSec = videoPlayer.duration;
+        
+        if (contentId && lastPositionSec > 0) {
+            sendProgressUpdate(contentId, currentEpisodeId, lastPositionSec, durationSec);
+        }
+    }
+
+    renderSections();
+    
+    if (videoPlayer) {
+        videoPlayer.pause();
+        videoPlayer.src = ""; 
+    }
+    if (playerModal) {
+        playerModal.classList.remove('show');
+    }
+    if (episodeDrawer) {
+        episodeDrawer.classList.remove('visible'); 
+    }
+  }
+
+  async function fetchEpisodes(contentId) {
+    allEpisodes = []; 
+    try {
+        const response = await fetch(`/api/content/${contentId}/episodes`);
+        if (!response.ok) throw new Error('Failed to fetch episodes');
+        allEpisodes = await response.json();
+        return allEpisodes;
+    } catch (err) {
+        console.error(err);
+        return [];
+    }
+  }
+
+  async function populateEpisodeDrawer(contentId, activeEpisodeId) {
+    const episodeListContainer = document.getElementById("episodeListContainer");
+    const episodeListTitle = document.getElementById("episodeListTitle");
+    
+    if (!episodeListContainer || !episodeListTitle) return;
+
+    const episodes = await fetchEpisodes(contentId);
+    episodeListContainer.innerHTML = ""; 
+    
+    const content = state.contentById.get(contentId);
+    episodeListTitle.textContent = content ? content.title : "Episodes";
+    
+    if (episodes.length === 0) {
+        episodeListContainer.innerHTML = "<li>No episodes found.</li>";
+        return;
+    }
+    
+    episodes.forEach(episode => {
+        const epId = episode._id?.toString() || episode.id;
+        const li = document.createElement('li');
+        if (epId === activeEpisodeId) {
+            li.className = 'active'; 
+        }
+        li.innerHTML = `<a href="#" data-episode-id="${epId}" data-content-id="${contentId}">
+            S${episode.season || 1} E${episode.episode || '?'}: ${episode.title}
+        </a>`;
+        episodeListContainer.appendChild(li);
+    });
+  }
+
+  function handleDrawerEpisodeClick(event) {
+    event.preventDefault();
+    const target = event.target.closest('a');
+    if (!target) return;
+
+    const episodeId = target.dataset.episodeId;
+    const contentId = target.dataset.contentId;
+    const content = state.contentById.get(contentId);
+    
+    if (content && episodeId) {
+        startPlayback(content, episodeId, 0); 
+    }
+  }
+
+  function playNextEpisode() {
+    if (allEpisodes.length === 0 || !currentEpisodeId) return;
+
+    const currentIndex = allEpisodes.findIndex(e => (e._id || e.id) === currentEpisodeId);
+    if (currentIndex > -1 && currentIndex < allEpisodes.length - 1) {
+        const nextEpisode = allEpisodes[currentIndex + 1];
+        const contentId = nextEpisode.seriesId || (allEpisodes[0] ? allEpisodes[0].seriesId : null); 
+        if (!contentId) {
+            console.error("Could not find contentId for next episode.");
+            stopPlayback();
+            return;
+        }
+        
+        const content = state.contentById.get(contentId);
+        if (content) {
+            startPlayback(content, (nextEpisode._id || nextEpisode.id), 0); 
+        } else {
+            console.error("Content not found for next episode:", contentId);
+            stopPlayback();
+        }
+    } else {
+        stopPlayback(); 
+    }
+  }
+
+  async function refreshContinueWatching() {
+    try {
+      const response = await fetch(`/api/profiles/${state.profileId}/continue`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch continue watching: ${response.status}`);
       }
+      const data = await response.json();
+      const continueWatching = data.items || [];
+      
+      // Update state
+      state.sections.continueWatching = continueWatching;
+      
+      // Update progress map and content index
+      continueWatching.forEach((entry) => {
+        if (entry?.content?.id) {
+          const contentId = entry.content.id;
+          state.contentById.set(contentId, entry.content);
+          state.progressMap.set(contentId, entry);
+        }
+      });
+      
+      // Re-render sections to show updated continue watching
+      renderSections();
+    } catch (err) {
+      console.error("Failed to refresh continue watching:", err);
+    }
+  }
 
-      const episodes = await episodesResponse.json();
-      const episode = episodes.find((e) => (e._id?.toString() || e.id) === episodeId);
+  async function sendProgressUpdate(contentId, episodeId, lastPositionSec, durationSec) {
+    const payload = {
+      contentId,
+      episodeId: episodeId || null,
+      lastPositionSec,
+      durationSec,
+      status: "in_progress",
+      event: "timeupdate" 
+    };
 
-      if (!episode) {
-        throw new Error("Episode not found");
-      }
+    // Check if this content was already in continue watching
+    const wasInContinueWatching = state.sections.continueWatching.some(
+      item => item?.content?.id === contentId
+    );
 
-      // Create progress entry for this episode
-      const payload = {
-        contentId,
-        episodeId,
-        lastPositionSec: 0,
-        durationSec: episode.durationSec || 0,
-        watchPercentage: 0,
-        status: "in_progress",
-        event: "start",
-      };
-
-      const progressResponse = await fetch(`/api/profiles/${state.profileId}/progress`, {
+    try {
+      const response = await fetch(`/api/profiles/${state.profileId}/progress`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      if (!progressResponse.ok) {
-        throw new Error(`Progress update failed: ${progressResponse.status}`);
+      
+      if (!response.ok) {
+        throw new Error(`Progress update failed: ${response.status}`);
       }
-
-      const result = await progressResponse.json();
-      const updated = result.progress;
-
-      // Update state
-      if (updated?.content) {
-        state.progressMap.set(updated.content.id, updated);
-        const list = state.sections.continueWatching || [];
-        const idx = list.findIndex((entry) => entry.content?.id === updated.content.id);
-        if (idx >= 0) {
-          list[idx] = updated;
-        } else {
-          list.unshift(updated);
-        }
-        state.sections.continueWatching = list;
-        buildIndices();
-        renderSections();
+      
+      const progress = state.progressMap.get(contentId) || { content: state.contentById.get(contentId) };
+      progress.lastPositionSec = lastPositionSec;
+      progress.durationSec = durationSec;
+      progress.watchPercentage = (lastPositionSec / durationSec) * 100;
+      progress.resumePositionSec = Math.max(0, lastPositionSec); 
+      progress.status = "in_progress";
+      if (episodeId) {
+          const episode = allEpisodes.find(e => (e._id || e.id) === episodeId);
+          progress.episode = { 
+              id: episodeId,
+              title: episode ? episode.title : "Episode",
+              season: episode ? episode.season : 1,
+              number: episode ? episode.episode : 1
+          };
       }
-
-      // Close modal and show alert
-      closeEpisodesModal();
-      alert(`Starting ${episode.title || "episode"}...`);
-    } catch (error) {
-      console.error("Failed to play episode:", error);
-      alert("Unable to start playback. Please try again.");
+      state.progressMap.set(contentId, progress);
+      refreshPlayButtonsFor(contentId);
+      
+      // If this content wasn't in continue watching before, refresh the section
+      if (!wasInContinueWatching && lastPositionSec > 0) {
+        await refreshContinueWatching();
+      }
+      
+    } catch (err) {
+      console.error("Failed to send progress update:", err);
     }
   }
 });
-

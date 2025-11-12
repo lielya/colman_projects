@@ -84,4 +84,4 @@ form.addEventListener("submit", async function (e) {
     passwordError.textContent = "Connection error. Please check if the server is running.";
   }
 });
-} // End of else block
+} 

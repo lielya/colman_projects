@@ -2,31 +2,34 @@
 const express = require('express');
 const router = express.Router();
 
-// Import all the new file names
 const adminController = require('../controllers/adminController.js');
 const { isAuthenticated, isAdmin } = require('../middleware/authMiddleware.js');
-const upload = require('../Middleware/uploadMiddleware.js');
+const upload = require('../middleware/uploadMiddleware.js'); // This is our 'memoryStorage' multer
 
 // Route to GET the admin page
 router.get(
   '/add-content', 
-  isAuthenticated, // Check if logged in
-  isAdmin,         // Check if admin
+  isAuthenticated, 
+  isAdmin, 
   adminController.getAddContentPage
 );
 
-// Route to POST the form data
+// Route to POST the form data (for CREATE)
 router.post(
   '/add-content',
   isAuthenticated,
   isAdmin,
-  // Multer middleware to handle the 3 files
-  upload.fields([
-    { name: 'posterImage', maxCount: 1 },
-    { name: 'backdropImage', maxCount: 1 },
-    { name: 'videoFile', maxCount: 1 }
-  ]),
-  adminController.createContent // Finally, run the controller logic
+  upload.any(), 
+  adminController.createContent 
+);
+
+// Route to POST the form data (for UPDATE)
+router.post(
+  '/edit-content/:id',
+  isAuthenticated,
+  isAdmin,
+  upload.any(), 
+  adminController.updateContent
 );
 
 module.exports = router;
