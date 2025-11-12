@@ -23,23 +23,20 @@ cd colman_projects
 npm install
 ```
 
-#### 3. Create a .env File
+
 
 Create a local file named .env in the project root directory and add:
 ```
 OMDB_API_KEY=*******  // ask for apikey from the manager
 ```
 
+
 ## Run the Server
 #### Production Mode:
 ```
-npm start
+node server.js
 ```
 
-#### Development Mode (auto-restart):
-```
-npm run dev
-```
 
 ## Open the Application
 
@@ -53,6 +50,16 @@ The server automatically connects to MongoDB using MONGO_URI.
 On first launch, seedDatabase.js populates initial data (users, profiles, content, etc.).
 
 Ensure MongoDB service is running before starting the server.
+
+### Environment Variables
+
+Create a local `.env` file (loaded automatically by `dotenv`) and define the following keys:
+
+```
+OMDB_API_KEY=******* // ask for apikey from the manager
+```
+
+`OMDB_API_KEY` is required for fetching ratings both in the admin panel and during the seeding process. If it is not set, rating lookups will be skipped gracefully.
 
 # 2. Project Structure
 
@@ -134,7 +141,7 @@ Users can like any movie or series.
 
 #### User Interface
 
-Netflix-style dark theme and professional layout.
+Netflix-style - a professional layout.
 Horizontal scrolling for content categories.
 Infinite scrolling for smooth content loading.
 Responsive design for mobile, tablet, and desktop.

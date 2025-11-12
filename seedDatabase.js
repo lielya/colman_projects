@@ -219,60 +219,50 @@ const actorsData = {
  * @param {string} title The title of the movie or series.
  * @returns {Promise<string>} The rating (e.g., "9.0" or "8.6") or "N/A".
  */
-async function getRatingForTitle(title) {
+async function getRatingForTitle(item) {
+  const { title, year, type } = item;
   try {
-    const apiKey = process.env.OMDB_API_KEY || 'd11be0e4'; 
-    
-    if (apiKey === 'd11be0e4') {
-      console.warn(`[Seeder] OMDb API key not set. Skipping rating for "${title}".`);
+    const apiKey = process.env.OMDB_API_KEY;
+    if (!apiKey) {
+      console.warn(`[Seeder] OMDB_API_KEY not set; skipping rating fetch for "${title}".`);
       return 'N/A';
     }
 
-    const omdbUrl = `http://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${apiKey}`;
-    const omdbResponse = await fetch(omdbUrl);
-    const movieData = await omdbResponse.json();
+    // Build query with disambiguation
+    const params = new URLSearchParams({ t: title, apikey: apiKey });
+    if (year) params.set('y', String(year));
+    if (type === 'movie' || type === 'series') params.set('type', type);
 
-    if (movieData.Response === 'False') {
-      console.warn(`[Seeder] OMDb API error for "${title}": ${movieData.Error}`);
+    const omdbUrl = `http://www.omdbapi.com/?${params.toString()}`;
+    const res = await fetch(omdbUrl);
+    const data = await res.json();
+
+    if (!data || data.Response === 'False') {
+      console.warn(`[Seeder] OMDb error for "${title}": ${data?.Error || 'Unknown error'}`);
       return 'N/A';
     }
 
-  // --- 👇 New logic with conversion (IMDb first) 👇 ---
-    let finalRating = 'N/A';
-    
-  // 1. Try to find an IMDb rating
-    if (movieData.imdbRating && movieData.imdbRating !== 'N/A') {
-      finalRating = movieData.imdbRating; // ⬅️ Prefer IMDb
-    } 
-  // 2. If not, try to find Rotten Tomatoes and convert it
-    else if (movieData.Ratings && Array.isArray(movieData.Ratings)) {
-      const rtRating = movieData.Ratings.find(r => r.Source === 'Rotten Tomatoes');
-      
-      if (rtRating && rtRating.Value.includes('%')) {
-        // Conversion: "94%" -> 9.4
-        const percentString = rtRating.Value.replace('%', '');
-        const percentNumber = parseFloat(percentString);
-        if (!isNaN(percentNumber)) {
-          finalRating = (percentNumber / 10.0).toFixed(1); 
-        }
+    // Prefer IMDb, then convert RT / Metacritic to 0-10 scale
+    if (data.imdbRating && data.imdbRating !== 'N/A') {
+      return data.imdbRating;
+    }
+
+    if (Array.isArray(data.Ratings)) {
+      const rt = data.Ratings.find(r => r.Source === 'Rotten Tomatoes');
+      if (rt && typeof rt.Value === 'string' && rt.Value.endsWith('%')) {
+        const pct = parseFloat(rt.Value.replace('%', ''));
+        if (!Number.isNaN(pct)) return (pct / 10).toFixed(1);
       }
-  // 3. Fallback: Metacritic
-      else if (finalRating === 'N/A') {
-        const mcRating = movieData.Ratings.find(r => r.Source === 'Metacritic');
-        if (mcRating && mcRating.Value.includes('/100')) {
-           const mcString = mcRating.Value.replace('/100', '');
-           const mcNumber = parseFloat(mcString);
-           if (!isNaN(mcNumber)) {
-              finalRating = (mcNumber / 10.0).toFixed(1); 
-           }
-        }
+      const mc = data.Ratings.find(r => r.Source === 'Metacritic');
+      if (mc && typeof mc.Value === 'string' && mc.Value.includes('/100')) {
+        const num = parseFloat(mc.Value.split('/')[0]);
+        if (!Number.isNaN(num)) return (num / 10).toFixed(1);
       }
     }
-  // --- 👆 End of the new logic 👆 ---
-    
-    return finalRating;
-  } catch (error) {
-    console.error(`[Seeder] Failed to fetch rating for "${title}":`, error.message);
+
+    return 'N/A';
+  } catch (err) {
+    console.error(`[Seeder] Failed to fetch rating for "${title}": ${err.message}`);
     return 'N/A';
   }
 }
@@ -563,7 +553,7 @@ try {
   {
     id:"s16", type:"series", title:"The Boys", year:2019, category:"Action",
     poster:"images/series/the-boys.jpg",                                  
-    backdrop:"images/series/the-boys.jpg",                         
+    backdrop:"images/series/the-boys-bd-image.jpg",                         
     info:"Vigilantes vs corrupt superheroes."
   },
   {
@@ -580,8 +570,8 @@ try {
   },
   {
     id:"s19", type:"series", title:"Fargo", year:2014, category:"Crime",
-    poster:"images/series/fargo.jpg",                                     
-    backdrop:"images/series/fargo.jpg",                             
+    poster: "images/series/fargo-poster-image.jpg",
+    backdrop: "images/series/fargo-backdrop.jpg",                            
     info:"Crime stories in the Midwest."
   },
   {
