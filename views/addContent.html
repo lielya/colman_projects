@@ -28,6 +28,27 @@
             max-width: 800px; 
             width: 100%;
             margin: auto;
+            position: relative;
+        }
+        .admin-close-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #fff;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 10;
+            transition: background 0.2s ease;
+        }
+        .admin-close-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
         .admin-container h1 {
             color: #E50914; 
@@ -121,6 +142,9 @@
 <body>
     
     <div class="admin-container">
+        <button class="admin-close-btn" id="adminCloseBtn" title="Close">
+            <i class="bi bi-x-lg"></i>
+        </button>
         <a href="/main" style="display: block; text-align: center; margin-bottom: 20px;">
             <img src="https://www.freepnglogos.com/uploads/netflix-logo-0.png" alt="Netflix" class="logo">
         </a>
@@ -358,6 +382,13 @@
         }
     
         document.addEventListener('DOMContentLoaded', () => {
+            const adminCloseBtn = document.getElementById('adminCloseBtn');
+            if (adminCloseBtn) {
+                adminCloseBtn.addEventListener('click', () => {
+                    window.location.href = '/';
+                });
+            }
+            
             document.getElementById('type').addEventListener('change', handleTypeChange);
             
             document.getElementById('add-episode-btn').addEventListener('click', addEpisodeRow);

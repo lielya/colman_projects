@@ -350,8 +350,7 @@ function renderOrUpdateNewInNetflix() {
     renderSection("continue", "Continue Watching", state.sections.continueWatching || [], { showProgress: true });
     renderSection("recommendations", "Recommended For You", state.sections.recommendations || [], {
       showReason: true,
-      allowSort: true,           // other sections can still use the global sort
-      fixedSort: "likes"         // this row will always sort by likes
+      allowSort: true
     });
     renderSection("popular", "Popular Now", state.sections.popular || [], { allowSort: true });
     renderSection("new-in", "New in Netflix", state.sections.newInNetflix || [], {
@@ -1596,6 +1595,12 @@ function renderOrUpdateNewInNetflix() {
     if (episodeListBtn) {
         episodeListBtn.addEventListener('click', () => {
             episodeDrawer.classList.toggle('visible');
+        });
+    }
+    const episodeDrawerClose = document.getElementById("episodeDrawerClose");
+    if (episodeDrawerClose) {
+        episodeDrawerClose.addEventListener('click', () => {
+            episodeDrawer.classList.remove('visible');
         });
     }
     if (episodeListContainer) {
